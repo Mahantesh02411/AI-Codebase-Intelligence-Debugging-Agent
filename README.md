@@ -99,4 +99,5 @@ This project was built with AI assistance: **Claude (Anthropic)** wrote and revi
 `venv/`, `.env` and `data/` are git-ignored. Never commit the virtual environment.
 #   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
  #   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
+ #   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
  
