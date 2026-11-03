@@ -1,0 +1,35 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16        # PostgreSQL 16 with the pgvector extension preinstalled
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: codeagent
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d codeagent"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  api:
+    build: .
+    ports: ["8000:8000"]
+    env_file: .env                      # copy .env.example to .env first
+    environment:
+      DATABASE_URL: postgresql://agent:agent@db:5432/codeagent   # chunks, metadata and vectors live in PostgreSQL
+      # CODE EXECUTION SANDBOX (docs/SANDBOX.md). As shipped this container has no Docker client and no daemon, so SANDBOX_MODE=docker (the
+      # default) REFUSES to run any repository code: tests/linters report "sandbox unavailable". That is the safe failure. To enable it:
+      #   1. build the images on the sandbox host:  scripts/build_sandbox.sh
+      #   2. give the API a Docker CLI (add it to the Dockerfile) and point it at a daemon that is NOT this machine's main daemon, e.g. a
+      #      dedicated VM with TLS:   DOCKER_HOST: tcp://sandbox-host:2376   (plus DOCKER_TLS_VERIFY / DOCKER_CERT_PATH)
+      #      Do not mount /var/run/docker.sock into this container: that is root on the host.
+      # SANDBOX_MAX_CONCURRENT: 2
+      # RATE_LIMIT_PER_MINUTE: 30
+    volumes: ["agent-data:/data"]       # working copies of imported repositories + experiment results
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  agent-data:
+  pgdata:

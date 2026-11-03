@@ -1,0 +1,37 @@
+# --- virtual environments (never commit these) ---
+venv/
+.venv/
+env/
+ENV/
+.env/
+*/venv/
+*/.venv/
+
+# --- secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# --- app runtime data (indexes, cloned repos, run logs) ---
+data/
+
+# --- editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+node_modules/
+.next/
