@@ -19,14 +19,8 @@ Live :->  https://ai-codebase-intelligence-debugging-agent.onrender.com/
 | **Track** | Track 1: Future Tech, Intelligent Systems & Emerging Technology |
 | **Problem statement number** | **FT-05: AI-Powered Automated Code Review** |
 
-## 2. Team name and member names
 
-| | |
-|---|---|
-| **Team name** | _(add your team name here)_ |
-| **Members** | Santosh Suresh Madannavar ([@Santosh02411](https://github.com/Santosh02411)) _(add the other members)_ |
-
-## 3. Problem description and proposed solution
+## 2. Problem description and proposed solution
 
 ### The problem
 Reviewing code is slow, and the cheap mistakes (a misspelled variable, an import path with a typo, a function called with the wrong number of arguments, a missing brace) waste a reviewer's time and still reach production. Reviewers that rely on a language model are fast but can invent problems, miss real ones, and give no way to tell which is which. Developers need a reviewer they can **trust for the things a machine can be certain about**, and an assistant for the rest.
@@ -54,7 +48,7 @@ Full catalogue and design: [docs/REVIEW_ENGINE.md](docs/REVIEW_ENGINE.md).
 ### Impact
 Cheap mistakes are the most common reason a review round is wasted. CodeScout AI catches them before a human looks, gives each one an exact location and a suggested fix, works **fully offline** (so private code never has to leave the machine for this layer), fits CI (`--fail-on high`, SARIF export for GitHub code scanning) and teaches as it reports (every finding says why).
 
-## 4. Technology stack and libraries used
+## 3. Technology stack and libraries used
 
 | Area | Technology and libraries |
 |---|---|
@@ -67,7 +61,7 @@ Cheap mistakes are the most common reason a review round is wasted. CodeScout AI
 
 Exact dependency lists: [requirements.txt](requirements.txt) and [frontend/package.json](frontend/package.json).
 
-## 5. Setup and installation instructions
+## 4. Setup and installation instructions
 
 **Requirements:** Python 3.11 or newer. Node.js 18+ is needed only to rebuild the web interface (a built copy is included in `app/webapp`). Docker is optional (isolated test execution).
 
@@ -89,7 +83,7 @@ cp .env.example .env                # Windows: copy .env.example .env
 
 **Optional: rebuild the web interface** after changing `frontend/`: `scripts/build_frontend.sh` (Node 18+). For hot-reload development: `cd frontend && npm install && npm run dev`.
 
-## 6. Instructions for running the project locally
+## 5. Instructions for running the project locally
 
 ```bash
 uvicorn app.main:app --reload       # then open http://localhost:8000
@@ -118,7 +112,7 @@ The web app exports the same reports (Code Review → **Export report**: Markdow
 
 **Tests:** `pytest` (offline: no keys, no network, no Docker needed).
 
-## 7. Screenshots
+## 6. Screenshots
 
 Every screenshot below was taken from the running application on a real open-source project, [miguelgrinberg/microblog](https://github.com/miguelgrinberg/microblog) (a Flask app, MIT licence, 52 Python files), into which **six realistic mistakes were planted** for the demonstration: a misspelled function name, a misspelled exception name, a call with a missing argument, an import of a name that does not exist, a missing colon, and a hard-coded API token. The same files are in the [Screenshots](Screenshots/) folder.
 
