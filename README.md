@@ -7,8 +7,8 @@
 **Finds the real mistakes in your code in about a second: typos, undefined names, wrong imports, wrong function calls, broken syntax and security holes. Then an AI agent explains them, fixes them and proves each fix with your tests.**
 
 </div>
-Try demo : https://ai-codebase-intelligence-debugging-agent.onrender.com/
----
+Live :->  https://ai-codebase-intelligence-debugging-agent.onrender.com/
+
 
 ## 1. Project title and problem statement number
 
