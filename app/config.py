@@ -73,8 +73,10 @@ class Settings:
         self.llm_fast_model = os.getenv("LLM_MODEL_FAST", "")          # cheaper model for planning / tool selection (falls back to LLM_MODEL)
         self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
         self.llm_max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
-        self.llm_timeout = float(os.getenv("LLM_TIMEOUT", "60"))
-        self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", "3"))
+        self.llm_timeout = float(os.getenv("LLM_TIMEOUT", "30"))
+        self.llm_max_retries = int(os.getenv("LLM_MAX_RETRIES", "2"))
+        # skip the two planning model calls for plain questions (Explain mode): the research step already chooses the tools. Set FAST_PLANNING=false to always plan with the model.
+        self.fast_planning = os.getenv("FAST_PLANNING", "true").lower() not in ("0", "false", "no")
         self.llm_fallback = os.getenv("LLM_FALLBACK", "")             # "provider[:model]", tried when the primary keeps failing
         self.llm_prices = os.getenv("LLM_PRICES", "")                 # optional JSON {"model": [usd_per_1M_input, usd_per_1M_output]}
         self.max_llm_calls = int(os.getenv("MAX_LLM_CALLS", "40"))     # hard cap per agent run

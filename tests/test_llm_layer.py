@@ -254,3 +254,94 @@ def test_fallback_is_attached_only_when_configured_and_keyed(monkeypatch):
     assert [f.name for f in llm.fallbacks] == ["gemini"] and llm.fallbacks[0].model == "gem-model"
     monkeypatch.delenv("GEMINI_API_KEY")
     assert get_llm("openai").fallbacks == []
+
+
+def test_gemini_switches_to_a_current_model_when_the_configured_one_is_retired():
+    from google import genai
+    from google.genai import types
+    good = gemini_reply([types.Part(text="ok")])
+
+    class Retired(FakeGemini):
+        def __init__(self):
+            super().__init__(good)
+            self.models = NS(generate_content=self._gen2, list=lambda: [NS(name="models/gemini-2.0-flash", supported_actions=["generateContent"]), NS(name="models/gemini-3.1-flash-lite", supported_actions=["generateContent"]),
+                                                                        NS(name="models/gemini-3.5-flash", supported_actions=["generateContent"]), NS(name="models/gemini-3.5-flash-image", supported_actions=["generateContent"]),
+                                                                        NS(name="models/text-embedding-9", supported_actions=["embedContent"])])
+
+        def _gen2(self, **kw):
+            self.calls.append(kw)
+            if kw["model"] == "gemini-2.0-flash":
+                raise Exception("404 NOT_FOUND. This model models/gemini-2.0-flash is no longer available.")
+            return good
+
+    llm = GeminiLLM(client=Retired(), genai=genai, model="gemini-2.0-flash", sleep=lambda s: None)
+    r = llm.chat("t", "s", [Message("user", "hi")])
+    assert r.text == "ok" and r.model == "gemini-3.5-flash" and llm.model == "gemini-3.5-flash"
+    assert [c["model"] for c in llm.client.calls] == ["gemini-2.0-flash", "gemini-3.5-flash"]
+    # a different failure is not swallowed
+    class Boom(Retired):
+        def _gen2(self, **kw):
+            raise Exception("429 quota exceeded")
+    with pytest.raises(Exception):
+        GeminiLLM(client=Boom(), genai=genai, model="gemini-2.0-flash", sleep=lambda s: None, max_retries=0).chat("t", "s", [Message("user", "hi")])
+
+
+def test_gemini_tries_the_next_model_immediately_when_one_is_overloaded():
+    from google import genai
+    from google.genai import types
+    good = gemini_reply([types.Part(text="ok")])
+
+    class Busy(FakeGemini):
+        def __init__(self):
+            super().__init__(good)
+            self.models = NS(generate_content=self._g, list=lambda: [NS(name="models/gemini-3.5-flash", supported_actions=["generateContent"]), NS(name="models/gemini-3.0-flash", supported_actions=["generateContent"])])
+
+        def _g(self, **kw):
+            self.calls.append(kw)
+            if kw["model"] == "gemini-3.5-flash":
+                raise Exception("503 UNAVAILABLE. This model is currently experiencing high demand.")
+            return good
+
+    llm = GeminiLLM(client=Busy(), genai=genai, model="gemini-3.5-flash", sleep=lambda s: None)
+    r = llm.chat("t", "s", [Message("user", "hi")])
+    assert r.text == "ok" and [c["model"] for c in llm.client.calls] == ["gemini-3.5-flash", "gemini-3.0-flash"]
+    assert llm.model == "gemini-3.5-flash"          # a one-off detour: the preferred model is kept
+
+
+def test_gemini_out_of_quota_model_falls_through_to_one_that_works_and_is_remembered(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from google import genai
+    from google.genai import types
+    good = gemini_reply([types.Part(text="ok")])
+
+    class Quota(FakeGemini):
+        def __init__(self):
+            super().__init__(good)
+            self.models = NS(generate_content=self._g, list=lambda: [NS(name="models/gemini-3.5-flash", supported_actions=["generateContent"]), NS(name="models/gemini-3.0-flash", supported_actions=["generateContent"]),
+                                                                    NS(name="models/gemini-2.5-flash", supported_actions=["generateContent"])])
+
+        def _g(self, **kw):
+            self.calls.append(kw)
+            if kw["model"] in ("gemini-3.5-flash", "gemini-3.0-flash"):
+                raise Exception("429 RESOURCE_EXHAUSTED. You exceeded your current quota")
+            return good
+
+    llm = GeminiLLM(client=Quota(), genai=genai, model="gemini-3.5-flash", sleep=lambda s: None)
+    r = llm.chat("t", "s", [Message("user", "hi")])
+    assert r.text == "ok" and [c["model"] for c in llm.client.calls] == ["gemini-3.5-flash", "gemini-3.0-flash", "gemini-2.5-flash"]
+    assert llm.model == "gemini-2.5-flash"
+    llm2 = GeminiLLM(client=Quota(), genai=genai, sleep=lambda s: None)      # next start, no LLM_MODEL configured: uses what worked
+    llm2.chat("t", "s", [Message("user", "hi")])
+    assert llm2.client.calls[0]["model"] == "gemini-2.5-flash"
+
+
+def test_gemini_without_a_configured_model_picks_a_current_one_up_front(tmp_path, monkeypatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    from google import genai
+    from google.genai import types
+    good = gemini_reply([types.Part(text="ok")])
+    client = FakeGemini(good)
+    client.models = NS(generate_content=client._gen, list=lambda: [NS(name="models/gemini-2.0-flash", supported_actions=["generateContent"]), NS(name="models/gemini-3.5-flash", supported_actions=["generateContent"])])
+    llm = GeminiLLM(client=client, genai=genai, sleep=lambda s: None)
+    llm.chat("t", "s", [Message("user", "hi")])
+    assert client.calls[0]["model"] == "gemini-3.5-flash"

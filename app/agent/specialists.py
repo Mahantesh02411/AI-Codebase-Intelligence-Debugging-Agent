@@ -95,7 +95,12 @@ class Planner(Base):
                     '"complexity": "simple|moderate|complex"}')
         degraded = ""
         try:
-            res = self.json("understand", prompts.UNDERSTAND, build, schemas.Understanding, hints={"question": q})
+            if getattr(self.s, "fast_planning", True) and mode == "chat" and not (frames or sig) and not st.get("images"):
+                # a plain question: no model call is needed to classify it (saves a round trip; the research step chooses the tools)
+                res, degraded = schemas.Understanding().model_dump(), " (fast path: no planning model call)"
+                res["intent"] = "explain"
+            else:
+                res = self.json("understand", prompts.UNDERSTAND, build, schemas.Understanding, hints={"question": q})
         except LLMBudgetExceeded:
             raise
         except LLMError as e:    # planning must never be what kills a run: fall back to plain heuristics
@@ -135,7 +140,10 @@ class Planner(Base):
                     '"needs_patch": bool, "needs_review": bool, "needs_regression_test": bool, "needs_docs": bool, "rationale": "one sentence"}')
         degraded = ""
         try:
-            raw = self.json("plan", prompts.PLAN, build, schemas.Plan)
+            if getattr(self.s, "fast_planning", True) and intent == "explain":
+                raw, degraded = schemas.Plan().model_dump(), " (fast path: default plan)"
+            else:
+                raw = self.json("plan", prompts.PLAN, build, schemas.Plan)
         except LLMBudgetExceeded:
             raise
         except LLMError as e:
@@ -717,17 +725,18 @@ class Reviewer(Base):
     def review_code(self, st: AgentState) -> dict:
         tools = self.tools
         target = st.get("target") or ""
-        if target:
-            files = [target]
-        else:
-            files = [f for f in tools.index.tree if f.endswith((".py", ".js", ".ts"))][:40]
-        findings, texts = [], {}
+        from ..review.engine import review_project
+        # every analysable file is checked with the strict engine (no sampling); the model only reads a few files for deeper reasoning
+        res_static = review_project(tools.root, only=[target] if target else None)
+        findings = [{"file": f["file"], "line": f["line"], "severity": f["severity"], "confidence": f["confidence"], "message": f"{f['message']} [{f['rule']}]", "evidence": f["evidence"], "fix": f["fix"], "source": "static"}
+                    for f in res_static["findings"]]
+        files = [target] if target else [f for f in tools.index.tree if f.endswith((".py", ".js", ".ts"))][:40]
+        texts = {}
         for f in files:
             try:
                 texts[f] = tools.read_file(f)
             except (ValueError, OSError):
                 continue
-            findings += static_checks(f, texts[f])
         focus = [target] if target else list(dict.fromkeys(c["file"] for c in st.get("context", []) if c["file"] in texts))[:6] or list(texts)[:6]
         code = "\n\n".join(f"### {f}\n```\n{texts[f][:2500]}\n```" for f in focus if f in texts)
 

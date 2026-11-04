@@ -45,6 +45,7 @@ interface IdeState {
   verify: boolean; setVerify: (v: boolean) => void;
 
   messages: ChatMessage[];
+  resetChat: () => void;
   addMessage: (m: ChatMessage) => void;
   patchMessage: (id: string, p: Partial<ChatMessage>) => void;
 
@@ -153,6 +154,7 @@ export const useIde = create<IdeState>()(
       verify: true, setVerify: (verify) => set({ verify }),
 
       messages: [],
+      resetChat: () => set({ messages: [], runs: [], activeRunId: null, conversationId: null, proposals: {}, attachment: null, screenshots: [] }),
       addMessage: (m) => set((s) => ({ messages: [...s.messages, m] })),
       patchMessage: (id, p) => set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, ...p } : m)) })),
 

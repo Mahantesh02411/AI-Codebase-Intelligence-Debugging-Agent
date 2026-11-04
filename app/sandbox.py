@@ -1,4 +1,5 @@
 from __future__ import annotations
+import time
 import shutil
 import sys
 import tempfile
@@ -30,7 +31,7 @@ def detect_command(root: Path) -> list[str]:
 
 def _result(status: str, summary: str, fw_name: str, shown: str, **kw) -> dict:
     return {"status": status, "passed": status == "passed", "summary": summary, "output": kw.pop("output", ""), "command": shown, "failed_tests": [], "counts": {}, "total": 0,
-            "duration_ms": 0, "framework": fw_name, "coverage": None, "coverage_supported": False, "sandbox": kw.pop("sandbox", {"mode": sandbox_exec.mode()}), **kw}
+            "duration_ms": 0, "framework": fw_name, "coverage": None, "coverage_supported": False, "executed": False, "exit_code": None, "tests": [], "sandbox": kw.pop("sandbox", {"mode": sandbox_exec.mode()}), **kw}
 
 
 def prepare_dependencies(workdir: Path, fw: frameworks.Framework, timeout: int = 300) -> str:
@@ -79,11 +80,13 @@ def run_tests(workdir: Path, timeout: int = 120, command: list[str] | None = Non
         return _result("sandbox_unavailable", str(e), fw.name, shown, sandbox={"mode": sandbox_exec.mode()})
     sbx = {"mode": res.mode, "image": res.image}
     if res.timed_out:
-        return _result("timeout", f"timed out after {timeout}s", fw.name, shown, sandbox=sbx, duration_ms=timeout * 1000, output=res.output[-3000:])
+        return _result("timeout", f"timed out after {timeout}s", fw.name, shown, sandbox=sbx, duration_ms=timeout * 1000, output=res.output[-20000:], exit_code=res.returncode, executed=True, executed_at=time.time())
     out = res.output
     parsed = frameworks.parse(fw, res.stdout if fw.parser in ("jest", "vitest", "mocha", "go") else out)
     if fw.parser in ("jest", "vitest", "mocha", "go") and not parsed["total"] and not parsed["failed_tests"]:
         parsed = frameworks.parse(fw, out)
+    if fw.parser == "pytest":
+        parsed = frameworks.enrich_pytest(parsed, res.output)     # per-test outcomes + tracebacks, from pytest's own output
     failed = bool(parsed["failed_tests"] or parsed["counts"].get("failed"))
     if fw.parser == "pytest":
         status = {0: "passed", 1: "failed", 5: "no_tests"}.get(res.returncode, "error")
@@ -97,5 +100,7 @@ def run_tests(workdir: Path, timeout: int = 120, command: list[str] | None = Non
         status = "no_tests"
     summary = frameworks.summarize(fw, parsed, out)
     cov = coverage_mod.collect(workdir, fw) if want_cov else None
-    return {"coverage": cov, "coverage_supported": coverage_mod.supported(fw), "status": status, "passed": status == "passed", "summary": (summary + (f" [{note}]" if note else ""))[:300], "output": out[-3000:], "command": shown,
-            "duration_ms": res.duration_ms, "framework": fw.name, "sandbox": sbx, "truncated": res.truncated, **{k: parsed[k] for k in ("counts", "failed_tests", "total")}}
+    return {"coverage": cov, "coverage_supported": coverage_mod.supported(fw), "status": status, "passed": status == "passed", "summary": (summary + (f" [{note}]" if note else ""))[:300], "output": out[-60000:], "command": shown,
+            "duration_ms": res.duration_ms, "framework": fw.name, "sandbox": sbx, "truncated": res.truncated or len(out) > 60000, "exit_code": res.returncode, "stderr": (res.stderr or "")[-8000:],
+            "executed": True, "executed_at": time.time(), "tests": parsed.get("tests", []), "skipped_reasons": parsed.get("skipped_reasons", {}),
+            **{k: parsed[k] for k in ("counts", "failed_tests", "total")}}

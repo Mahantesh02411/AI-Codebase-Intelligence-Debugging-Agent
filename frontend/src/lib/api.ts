@@ -1,7 +1,7 @@
 import type {
   GitStatus, GitVersions, GrepResult, Health, RepoMeta, SymbolInfo, TerminalResult, TestRun, Chunk, Edit, NewFile,
   PatchRecord, PatchFileVersions, ResultData, SandboxStatus, QualityInfo, QualityJob, QualityReport, GhPull, GhIssue, GitSummary, ActionRecord, ActionPreview, DatasetInfo, ExperimentJob, ExperimentResult, ExperimentSummary, RagInfo,
-  AuthStatus, BranchInfo, CommitInfo, GithubRepo, Graph, Impact, IndexStatus, RemotePreview, RepoStats, SymbolDetail,
+  QualityHistoryItem, RepoFiles, StaticReview, SourceStatus, FlowResult, SystemGraph, Insights, OverviewData, OverviewResponse, ExplainResponse, TestDiscovery, RecordedRun, AuthStatus, BranchInfo, CommitInfo, GithubRepo, Graph, Impact, IndexStatus, RemotePreview, RepoStats, SymbolDetail,
 } from "./types";
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -15,7 +15,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API_URL}${path}`, init);
   } catch {
-    throw new ApiError(`Can't reach the API at ${API_URL}. Is the backend running? (uvicorn app.main:app --reload)`, 0);
+    throw new ApiError(`Can't reach the API at ${API_URL || "this server"}. Is the backend running? (uvicorn app.main:app --reload)`, 0);
   }
   let data: unknown = null;
   try { data = await res.json(); } catch { /* empty body */ }
@@ -75,7 +75,7 @@ export const api = {
   gitFile: (id: string, path: string) => request<GitVersions>(`/repositories/${id}/git/file?${qs({ path })}`),
   gitDiscard: (repo_id: string, path: string) => request<GitStatus>("/git/discard", json("POST", { repo_id, path, approved: true })),   // callers confirm with the user first
   gitCommit: (repo_id: string, message: string) => request<{ sha: string }>("/git/commit", json("POST", { repo_id, message })),
-  runTests: (repo_id: string) => request<TestRun>("/run-tests", json("POST", { repo_id })),
+  runTests: (repo_id: string, targets?: string[]) => request<TestRun>("/run-tests", json("POST", { repo_id, targets })),
   terminal: (repo_id: string, command: string) => request<TerminalResult>("/terminal/exec", json("POST", { repo_id, command })),
   applyChanges: (repo_id: string, edits: Edit[], new_files: NewFile[]) =>
     request<{ files: string[]; index: RepoMeta }>("/apply-changes", json("POST", { repo_id, edits, new_files })),
@@ -106,6 +106,21 @@ export const api = {
   rejectPatch: (id: string) => request<PatchRecord>(`/patches/${id}/reject`, { method: "POST" }),
   recheckPatch: (id: string) => request<PatchRecord>(`/patches/${id}/checks`, { method: "POST" }),
   repairPatch: (id: string, provider?: string) => request<ResultData>(`/patches/${id}/repair`, json("POST", { provider: provider || undefined })),
+  reviewStatic: (id: string, paths?: string[]) => request<StaticReview>(`/repositories/${id}/review/static`, json("POST", { paths: paths ?? null })),
+  sourceStatus: (id: string) => request<SourceStatus>(`/repositories/${id}/source-status`),
+  refreshRepo: (id: string) => request<Record<string, unknown>>(`/repositories/${id}/refresh`, json("POST", {})),
+  flow: (id: string, symbol: string, depth = 3) => request<FlowResult>(`/repositories/${id}/flow?${qs({ symbol, depth })}`),
+  repoFiles: (id: string) => request<RepoFiles>(`/repositories/${id}/files`),
+  graphSystem: (id: string, maxSymbols = 900) => request<SystemGraph>(`/repositories/${id}/graph/system?${qs({ max_symbols: maxSymbols })}`),
+  insights: (id: string) => request<Insights>(`/repositories/${id}/insights`),
+  overview: (id: string) => request<{ overview: OverviewData | null; stale: boolean; llm_mock: boolean }>(`/repositories/${id}/overview`),
+  makeOverview: (id: string, force = false, provider?: string) => request<OverviewResponse>(`/repositories/${id}/overview`, json("POST", { force, provider: provider || null })),
+  explain: (repo_id: string, subject: string, paths: string[], symbols: string[], provider?: string) => request<ExplainResponse>(`/explain`, json("POST", { repo_id, subject, paths, symbols, provider: provider || null })),
+  testDiscovery: (id: string) => request<TestDiscovery>(`/repositories/${id}/tests`),
+  testRuns: (id: string, limit = 20, full = true) => request<RecordedRun[]>(`/repositories/${id}/test-runs?${qs({ limit, full })}`),
+  deleteRepo: (id: string) => request<{ deleted: string } | Record<string, unknown>>(`/repositories/${id}`, { method: "DELETE" }),
+  patches: (repo_id: string) => request<PatchRecord[]>(`/patches?${qs({ repo_id })}`),
+  qualityHistory: (repo_id: string) => request<QualityHistoryItem[]>(`/quality/history?${qs({ repo_id })}`),
   createPr: (repo_id: string, files: Record<string, string>, title: string, body: string) =>
     request<{ url: string; number: number; branch: string }>("/create-pr", json("POST", { repo_id, files, title, body, confirm: true })),
 };

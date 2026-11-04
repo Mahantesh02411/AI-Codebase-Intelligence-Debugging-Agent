@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { useIde } from "@/store/ide";
 import { streamAgent } from "@/lib/stream";
@@ -25,10 +25,12 @@ function toProposal(mode: Mode, d: ResultData, title: string): Proposal | null {
 }
 
 /** Starts an agent run and streams every event into the store (chat message, activity timeline, sources, tests). */
-export function useAgentRun() {
-  const abort = useRef<AbortController | null>(null);
+let currentAbort: AbortController | null = null;   // module scope: the run keeps going (and can be stopped) when the user navigates between pages
 
-  const stop = useCallback(() => abort.current?.abort(), []);
+export function useAgentRun() {
+  const abort = { get current() { return currentAbort; }, set current(v: AbortController | null) { currentAbort = v; } };
+
+  const stop = useCallback(() => currentAbort?.abort(), []);
 
   const run = useCallback(async (mode: Mode, text: string, opts: { target?: string } = {}) => {
     const s = useIde.getState();
@@ -99,6 +101,7 @@ export function useAgentRun() {
     } finally {
       abort.current = null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { run, stop };

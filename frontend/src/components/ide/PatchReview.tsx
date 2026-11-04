@@ -11,6 +11,7 @@ import type { Decision, PatchChecks, PatchRecord, Verdict, VerdictStatus } from 
 import { cn, uid } from "@/lib/utils";
 import { useInvalidateRepo } from "@/hooks/queries";
 import { useIde } from "@/store/ide";
+import { useMonacoTheme } from "@/lib/monacoTheme";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -68,6 +69,7 @@ function ChecksPanel({ rec, onRecheck, onRevert, onRepair, busy }: { rec: PatchR
 
 /** The exact diff of an agent (or hand-made) patch in Monaco's diff editor. Nothing is written until the user approves, and the checks run right after. */
 export function PatchReviewTab({ repoId, patchId }: { repoId: string; patchId: string }) {
+  const monacoTheme = useMonacoTheme();
   const qc = useQueryClient();
   const invalidate = useInvalidateRepo();
   const { closeTab, setSidebar, openPatch, addMessage } = useIde.getState();
@@ -178,7 +180,7 @@ export function PatchReviewTab({ repoId, patchId }: { repoId: string; patchId: s
         </ScrollArea>
         <div className="min-w-0 flex-1">
           {current && (versions.data ? (
-            <DiffEditor key={`${current}:${r.status}`} height="100%" theme="vs-dark" language={languageOf(current)} original={versions.data.original} modified={versions.data.modified} options={DIFF_OPTS} />
+            <DiffEditor key={`${current}:${r.status}`} height="100%" theme={monacoTheme} language={languageOf(current)} original={versions.data.original} modified={versions.data.modified} options={DIFF_OPTS} />
           ) : <div className="p-4 text-muted-foreground">{versions.error ? (versions.error as Error).message : "Loading diff…"}</div>)}
         </div>
       </div>

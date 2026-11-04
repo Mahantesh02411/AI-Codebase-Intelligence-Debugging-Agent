@@ -17,7 +17,7 @@ export async function streamAgent(body: StreamRequest, onEvent: (e: AgentEvent) 
     });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
-    throw new ApiError(`Can't reach the API at ${API_URL}. Is the backend running?`, 0);
+    throw new ApiError(`Can't reach the API at ${API_URL || "this server"}. Is the backend running?`, 0);
   }
   if (!res.ok || !res.body) {
     let detail = res.statusText;

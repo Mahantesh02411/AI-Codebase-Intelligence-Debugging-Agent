@@ -9,7 +9,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-PYTEST = ["python", "-m", "pytest", "-q", "--tb=short", "-rfE", "--maxfail=10", "-p", "no:cacheprovider"]
+# -v prints one line per test (so every outcome is known), -rfEsxX lists failures, errors, skips and xfails with reasons, --tb=short keeps tracebacks readable
+PYTEST = ["python", "-m", "pytest", "-v", "--tb=short", "-rfEsxX", "--maxfail=10", "-p", "no:cacheprovider"]
 
 
 @dataclass
@@ -119,6 +120,48 @@ def parse_pytest(out: str) -> dict:
         counts[kind.rstrip("s") if kind.startswith("error") else kind] = int(n)
     failed = [{"id": m.group(2), "kind": m.group(1).lower(), "message": (m.group(3) or "")[:200]} for m in _PYFAIL.finditer(out)]
     return {"counts": counts, "failed_tests": failed, "total": sum(v for k, v in counts.items() if k in ("passed", "failed", "error", "skipped"))}
+
+
+_VERB = re.compile(r"^(\S+?::\S+?) (PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b", re.M)
+_SKIP = re.compile(r"^SKIPPED \[\d+\] (\S+?):(\d+): (.*)$", re.M)
+_HEAD = re.compile(r"^_{2,} (.+?) _{2,}$", re.M)
+_FRAME = re.compile(r"^(\S+\.\w+):(\d+): in (\S+)", re.M)
+
+
+def enrich_pytest(parsed: dict, out: str) -> dict:
+    """Adds what the plain summary lacks, straight from pytest's own output: the outcome of every test that ran (`tests`), and for each failure its
+    traceback, call frames (file:line) and the final `E ...` error lines. Nothing here is inferred: if pytest did not print it, it is absent."""
+    tests = [{"id": m.group(1), "outcome": m.group(2).lower()} for m in _VERB.finditer(out)]
+    seen: set[str] = set()
+    uniq = []
+    for t in tests:
+        if t["id"] not in seen:
+            seen.add(t["id"]); uniq.append(t)
+    skips = {f"{m.group(1)}:{m.group(2)}": m.group(3) for m in _SKIP.finditer(out)}
+    heads = list(_HEAD.finditer(out))
+    sections: dict[str, str] = {}
+    for i, h in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(out)
+        body = out[h.end():end]
+        cut = re.search(r"^={3,} ", body, re.M)       # the next "=== section ===" banner ends the traceback
+        sections[h.group(1)] = (body[: cut.start()] if cut else body).strip("\n")
+    for f in parsed["failed_tests"]:
+        short = f["id"].split("::", 1)[-1]
+        key = next((k for k in sections if k == short or k.replace(".", "::") == short or f["id"].endswith("::" + k) or f["id"].endswith(k.replace(".", "::"))), None)
+        if key:
+            tb = sections[key]
+            frames = [{"file": m.group(1), "line": int(m.group(2)), "func": m.group(3)} for m in _FRAME.finditer(tb)]
+            err = [l[1:].strip() for l in tb.splitlines() if l.startswith("E ")]
+            f["traceback"] = tb[:6000]
+            f["frames"] = frames[:12]
+            if frames:
+                f["location"] = {"file": frames[-1]["file"], "line": frames[-1]["line"]}
+            if err:
+                f["error"] = "\n".join(err)[:600]
+    parsed = dict(parsed)
+    parsed["tests"] = uniq[:3000]
+    parsed["skipped_reasons"] = skips
+    return parsed
 
 
 def _json_blob(text: str, key: str) -> dict | None:
@@ -258,7 +301,7 @@ def parse(fw: Framework, output: str) -> dict:
 def summarize(fw: Framework, parsed: dict, output: str) -> str:
     c = parsed["counts"]
     if fw.name == "pytest" and output:
-        return output.splitlines()[-1] if output.splitlines() else ""
+        return output.splitlines()[-1].strip("= ") if output.splitlines() else ""
     if c:
         bits = [f"{c[k]} {k}" for k in ("passed", "failed", "error", "skipped") if c.get(k)]
         return ", ".join(bits) or "no tests ran"

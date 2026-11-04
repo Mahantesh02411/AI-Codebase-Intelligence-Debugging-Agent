@@ -46,13 +46,14 @@ Deeper dives: [docs/AGENT.md](docs/AGENT.md) (LLM layer, context building, agent
 Python 3.11+ · FastAPI · LangGraph / LangChain core · Gemini or OpenAI behind one interface (plus an offline mock) · PostgreSQL + pgvector (or in-memory) · BM25 + RRF + cross-encoder/heuristic/LLM reranking · Python `ast` + Tree-sitter · Docker sandbox · Next.js, TypeScript, Monaco editor (IDE UI) and a built-in single-page UI.
 
 ## Quick start
+Keys and tokens (all optional; the app runs offline without them): [docs/ENV_SETUP.md](docs/ENV_SETUP.md) explains how to get each one and what happens if it is missing.
 ```bash
 python -m venv venv && source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env            # defaults to the offline mock LLM; set LLM_PROVIDER=gemini|openai, the API key and LLM_MODEL for real runs
 uvicorn app.main:app --reload   # UI at http://localhost:8000, API docs at /docs
 ```
-Optional IDE frontend: `cd frontend && cp .env.example .env.local && npm install && npm run dev` (http://localhost:3000).
+**Web app (redesigned):** `uvicorn app.main:app --reload` serves it at http://localhost:8000 (pre-built into `app/webapp`; after changing `frontend/`, run `scripts/build_frontend.sh`, which needs Node 18+). For frontend development with hot reload: `cd frontend && cp .env.example .env.local && npm install && npm run dev` (http://localhost:3000). It has: dashboard, AI chat with a live agent timeline, code explorer, interactive architecture graphs, debugging, review, quality, patches, testing and GitHub pages, in light and dark themes. See [frontend/README.md](frontend/README.md). The previous single-page UI is still available at `/classic`, and the multi-tab IDE layout at `/workbench`.
 Code execution needs the sandbox images: `scripts/build_sandbox.sh` (Docker required). Without Docker the agent still answers and reviews, but patches are reported as **unverified** because nothing runs. `SANDBOX_MODE=local` is for your own machine only.
 PostgreSQL + pgvector: `docker compose up db` and set `DATABASE_URL`.
 
@@ -65,6 +66,9 @@ Patch generation and root-cause analysis need a real LLM; the mock provider only
 
 ## Configuration
 All settings are environment variables, documented in [.env.example](.env.example): `LLM_PROVIDER`, `LLM_MODEL`, `LLM_MODEL_FAST`, `EMBEDDING_PROVIDER`, `DATABASE_URL`, `SANDBOX_MODE`, `MAX_LLM_CALLS`, `MAX_AGENT_TOTAL_STEPS`, `MAX_RUN_SECONDS`, `TEST_TIMEOUT`, `GITHUB_TOKEN` and GitHub OAuth settings.
+
+## Strict code review
+Open **Code Review**: every analysable file is checked in about a second with real parsers and fixed rules (no model): Python syntax errors, undefined names and misspellings (“did you mean”), `self.` attribute typos, wrong imports between project files, wrong call arguments, unused code, common bugs and security issues; syntax errors (missing/extra braces and brackets) in JS/TS/Java/Go/Rust/C/C++; JSON/YAML/TOML/HTML/CSS structure. The page lists exactly what was and was not analysed. **The review reads the server's copy of your project**: after you edit files in your original folder, use *Sync & review again* (or the project menu → *Sync from source & re-index*). Type checking is not included (use the Code Quality scan for mypy).
 
 ## Evaluation (what has actually been measured)
 Everything below was produced by this repository's harness (`python -m app.rag.eval`). **No real-LLM or real-embedding results are included yet**; the numbers are offline baselines and must not be read as model quality.
@@ -97,7 +101,3 @@ This project was built with AI assistance: **Claude (Anthropic)** wrote and revi
 
 ## Pushing to GitHub
 `venv/`, `.env` and `data/` are git-ignored. Never commit the virtual environment.
-#   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
- #   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
- #   A I - C o d e b a s e - I n t e l l i g e n c e - D e b u g g i n g - A g e n t  
- 

@@ -13,6 +13,7 @@ def _isolated_env(monkeypatch):
     # the suite runs repository fixtures directly; the Docker sandbox is exercised separately (tests/test_sandbox_exec.py, with a fake `docker`)
     monkeypatch.setenv("SANDBOX_MODE", "local")
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "0")
+    monkeypatch.setenv("FAST_PLANNING", "false")      # the scripted-model tests exercise the planning calls; test_fast_planning.py covers the fast path
     from app import ratelimit
     ratelimit.reset()
 

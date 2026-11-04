@@ -22,7 +22,7 @@ from .intel.ts_core import available_grammars
 from .rag import experiments as exp_mod
 from .rag.embedders import get_embedder
 from . import actions as actions_mod
-from . import ratelimit
+from . import ratelimit, understanding
 from . import git_intel, pr_context, sandbox_exec
 from . import github_api
 from .agent import schemas as agent_schemas
@@ -43,6 +43,7 @@ app = FastAPI(title="AI Codebase Intelligence & Debugging Agent", version="0.4.0
 app.middleware("http")(ratelimit.middleware)
 _service: RepoService | None = None
 STATIC = Path(__file__).parent / "static"
+WEBAPP = Path(__file__).parent / "webapp"     # the redesigned web app (static export of frontend/, built by scripts/build_frontend.sh)
 # The Next.js IDE (frontend/) runs on another port in development, so allow it to call this API.
 app.add_middleware(CORSMiddleware, allow_methods=["*"], allow_headers=["*"],
                    allow_origins=[o.strip() for o in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()])
@@ -209,6 +210,13 @@ def _attach_patch(repo_id: str, res: dict, *, intent: str, question: str) -> dic
 
 @app.get("/", include_in_schema=False)
 def ui():
+    """The redesigned web app when it has been built, otherwise the original single-page UI."""
+    new = WEBAPP / "index.html"
+    return FileResponse(new if new.is_file() else STATIC / "index.html")
+
+
+@app.get("/classic", include_in_schema=False)
+def classic_ui():
     return FileResponse(STATIC / "index.html")
 
 
@@ -296,8 +304,15 @@ def generate_fix(body: AskIn):
 
 @app.post("/run-tests")
 def run_tests(body: dict):
-    _, root, index = _repo(body.get("repo_id", ""))
-    return RepoTools(root, index, get_settings().test_timeout).run_tests()
+    """Run the project's real test suite (or `targets`) in the sandbox. The run is recorded as history only when something actually executed."""
+    repo_id = body.get("repo_id", "")
+    _, root, index = _repo(repo_id)
+    targets = [t for t in (body.get("targets") or []) if isinstance(t, str)][:50] or None
+    run = RepoTools(root, index, get_settings().test_timeout).run_tests(targets=targets)
+    if run.get("executed"):
+        rec = understanding.record_run(repo_id, run, targets)
+        return {**run, "run_id": rec["id"], "recorded_at": rec["recorded_at"]}
+    return run
 
 
 class PatchIn(BaseModel):
@@ -1379,3 +1394,192 @@ def run_experiment_endpoint(body: ExperimentIn):
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     return {"job_id": job}
+
+
+# ---- web app: system graph, insights, AI understanding, test discovery and history ----------------------------------------------------
+@app.get("/repositories/{repo_id}/graph/system")
+def graph_system(repo_id: str, max_symbols: int = 900):
+    """The whole repository as one graph (folders, files, symbols; imports, calls, inheritance, tests) with verified/inferred marked on every edge."""
+    from .intel import system_graph
+    _, _, index = _repo(repo_id)
+    return system_graph.system_graph(index.graph, max_symbols=max(0, min(max_symbols, 2000)))
+
+
+@app.get("/repositories/{repo_id}/files")
+def repo_files(repo_id: str):
+    """EVERY file of the working copy (code, config, assets, docs), not just the indexed ones. Dependency/build folders are listed as skipped, not walked."""
+    import os
+    _, root, index = _repo(repo_id)
+    skip = {".git", "node_modules", "venv", ".venv", "__pycache__", ".next", ".cache", "site-packages", "dist", "build", "target", ".idea", ".pytest_cache"}
+    indexed = set(index.tree)
+    files, skipped = [], []
+    base = str(root)
+    for d, dirs, names in os.walk(base):
+        rel_d = os.path.relpath(d, base).replace(os.sep, "/")
+        prefix = "" if rel_d == "." else rel_d + "/"
+        for x in list(dirs):
+            if x in skip:
+                skipped.append(prefix + x)
+        dirs[:] = sorted(x for x in dirs if x not in skip)
+        for f in sorted(names):
+            fp = os.path.join(d, f)
+            try:
+                size = os.path.getsize(fp)
+            except OSError:
+                size = 0
+            rel = prefix + f
+            files.append({"path": rel, "size": size, "indexed": rel in indexed})
+        if len(files) > 8000:
+            break
+    return {"files": files, "skipped_dirs": skipped, "truncated": len(files) > 8000}
+
+
+@app.get("/repositories/{repo_id}/flow")
+def repo_flow(repo_id: str, symbol: str, depth: int = 3):
+    """Execution flow of a function: its calls in source order, followed through the project (depth-limited)."""
+    from .intel import system_graph
+    _, _, index = _repo(repo_id)
+    _, root, _ = _repo(repo_id)
+    res = system_graph.flow(index.graph, symbol, depth=max(1, min(depth, 5)), root=root)
+    if res is None:
+        raise HTTPException(404, f"unknown symbol: {symbol}")
+    return res
+
+
+@app.get("/repositories/{repo_id}/insights")
+def repo_insights(repo_id: str):
+    """Facts about the project found by the parser (no model call): entry points, routes, key modules, hubs, external packages, untested modules, risks, suggested questions."""
+    from .intel import system_graph
+    from .intel.stats import repo_stats
+    _, _, index = _repo(repo_id)
+    return system_graph.insights(index.graph, repo_stats(index))
+
+
+class OverviewIn(BaseModel):
+    provider: str | None = None
+    force: bool = False
+
+
+def _llm_is_mock(provider: str | None) -> bool:
+    try:
+        return get_llm(provider).name == "mock"
+    except ValueError:
+        return False
+
+
+@app.get("/repositories/{repo_id}/overview")
+def get_overview(repo_id: str):
+    meta, _, _ = _repo(repo_id)
+    cached = understanding.load_overview(repo_id)
+    stale = bool(cached) and cached.get("indexed_at") != meta.get("indexed_at")
+    return {"overview": cached, "stale": stale, "llm_mock": _llm_is_mock(None)}
+
+
+@app.post("/repositories/{repo_id}/overview")
+def make_overview(repo_id: str, body: OverviewIn | None = None):
+    """AI explanation of the whole project, grounded in retrieved code and cited. Needs a real model: the offline mock cannot reason, so it generates nothing."""
+    from .intel import system_graph
+    from .intel.stats import repo_stats
+    body = body or OverviewIn()
+    meta, _, index = _repo(repo_id)
+    cached = understanding.load_overview(repo_id)
+    if cached and cached.get("indexed_at") == meta.get("indexed_at") and not body.force:
+        return {"state": "cached", "overview": cached}
+    if _llm_is_mock(body.provider):
+        return {"state": "unavailable", "reason": "The offline mock model cannot explain code. Set LLM_PROVIDER and an API key (docs/ENV_SETUP.md) to enable AI project understanding.", "overview": cached}
+    facts = system_graph.facts_digest(system_graph.insights(index.graph, repo_stats(index)), meta.get("name", ""))
+    res = _run(AskIn(repo_id=repo_id, question=understanding.OVERVIEW_QUESTION.format(facts=facts), provider=body.provider), allow_fix=False, mode="chat")
+    data = understanding.save_overview(repo_id, {"answer": res.get("answer", ""), "sources": res.get("sources", []), "citations": res.get("citations"), "llm": res.get("llm"),
+                                                 "usage": res.get("usage"), "indexed_at": meta.get("indexed_at"), "facts": facts, "status": res.get("status")})
+    return {"state": "generated", "overview": data}
+
+
+class ExplainIn(BaseModel):
+    repo_id: str
+    subject: str = "architecture"          # architecture | folder | file | symbol | selection
+    paths: list[str] = Field(default_factory=list, max_length=40)
+    symbols: list[str] = Field(default_factory=list, max_length=40)
+    provider: str | None = None
+
+
+@app.post("/explain")
+def explain(body: ExplainIn):
+    """AI explanation of a part of the architecture (a folder, file, symbol or selection) using the real graph relationships as facts and retrieved code as evidence."""
+    from .intel import system_graph
+    from .intel.stats import repo_stats as _repo_stats
+    _, _, index = _repo(body.repo_id)
+    if _llm_is_mock(body.provider):
+        return {"state": "unavailable", "reason": "The offline mock model cannot explain architecture. Set LLM_PROVIDER and an API key to enable this (docs/ENV_SETUP.md)."}
+    g = index.graph
+    sg = system_graph.system_graph(g)
+    paths = set(body.paths)
+    lines: list[str] = []
+    for e in sg["edges"]:
+        if e["type"] in ("import", "test", "inherit", "call") and (e["source"].split("::")[0] in paths or e["target"].split("::")[0] in paths or e["source"] in body.symbols or e["target"] in body.symbols):
+            lines.append(f"{e['source']} -[{e['type']}{'' if e['verified'] else ', inferred'}]-> {e['target']}")
+    folder_files = [f["id"] for f in sg["files"] if any(f["id"].startswith(p.rstrip("/") + "/") for p in paths)] if body.subject == "folder" else []
+    what = {"architecture": "the overall architecture of this project", "folder": f"the folder(s) {', '.join(sorted(paths))}", "file": f"the file(s) {', '.join(sorted(paths))}",
+            "symbol": f"the symbol(s) {', '.join(body.symbols)}", "selection": "the selected part of the codebase"}.get(body.subject, "the selected part of the codebase")
+    ins = system_graph.insights(g, _repo_stats(index)) if body.subject == "architecture" else None
+    ctx = system_graph.facts_digest(ins) if ins else ""
+    rel = "\n".join(sorted(set(lines))[:80])
+    q = (f"Explain {what}: its role, how it works, what it depends on, what depends on it, and how data or control flows through it. "
+         "Ground claims in the retrieved code and cite snippets with [n]; say so when the code does not show something.\n\n"
+         + (f"Files in the folder: {', '.join(folder_files[:40])}\n\n" if folder_files else "")
+         + (f"Parser-detected facts:\n{ctx}\n\n" if ctx else "")
+         + (f"Relationships between these parts found by the parser (verified unless marked inferred):\n{rel}" if rel else "No relationships between these parts were found by the parser."))
+    res = _run(AskIn(repo_id=body.repo_id, question=q, provider=body.provider), allow_fix=False, mode="chat")
+    return {"state": "generated", **res}
+
+
+@app.get("/repositories/{repo_id}/tests")
+def discover(repo_id: str):
+    """Tests that exist (parsed from source) and how they would be run. Nothing is executed here."""
+    from .quality import frameworks
+    _, root, index = _repo(repo_id)
+    return understanding.discover_tests(root, index.graph, sandbox_exec.status(), frameworks.detect(root))
+
+
+@app.get("/repositories/{repo_id}/test-runs")
+def test_runs(repo_id: str, limit: int = 20, full: bool = False):
+    _repo(repo_id)
+    return understanding.list_runs(repo_id, max(1, min(limit, 40)), full)
+
+
+# ---- strict review and source sync ----------------------------------------------------------------------------------------------------
+class StaticReviewIn(BaseModel):
+    paths: list[str] | None = Field(default=None, max_length=200)
+
+
+@app.post("/repositories/{repo_id}/review/static")
+def review_static(repo_id: str, body: StaticReviewIn | None = None):
+    """Strict deterministic review of EVERY analysable file (syntax in all supported languages, undefined names and typos, bad imports, wrong call arguments,
+    unused code, bug patterns, security rules). No model is involved; it takes a few seconds."""
+    from .review.engine import review_project
+    meta, root, _ = _repo(repo_id)
+    res = review_project(root, only=(body.paths if body and body.paths else None))
+    res["project"] = {"id": repo_id, "name": meta.get("name"), "indexed_at": meta.get("indexed_at")}
+    return res
+
+
+@app.get("/repositories/{repo_id}/source-status")
+def source_status(repo_id: str):
+    _repo(repo_id)
+    return service().source_changes(repo_id)
+
+
+@app.post("/repositories/{repo_id}/refresh")
+def refresh_repo(repo_id: str):
+    """Sync the working copy from the original folder / git URL, then re-index."""
+    _repo(repo_id)
+    try:
+        return service().refresh(repo_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"refresh failed: {type(e).__name__}: {e}")
+
+
+# ---- the web app's pages and assets (/chat/, /explorer/, /_next/...). MUST stay the last registration: API routes above win, this is the fallback.
+if (WEBAPP / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=WEBAPP, html=True), name="webapp")
