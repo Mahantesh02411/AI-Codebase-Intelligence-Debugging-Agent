@@ -204,7 +204,7 @@ export function System3D({ repoId, className }: { repoId: string; className?: st
   const select = (id: string, fit = true) => {
     const kind = maps.kindOf(id); if (!kind) return;
     setSel({ kind, id });
-    if (fit) flyTo(id, kind === "cluster" ? (layout!.clusters.find((c) => c.id === id)!.radius * 3.2) : kind === "file" ? 5 : 3.5);
+    if (fit) flyTo(id, kind === "cluster" ? (layout!.clusters.find((c) => c.id === id)!.radius * 3.2) : kind === "file" ? 12 : 9);
   };
   const enter = (id: string) => { setFocusCluster(id); setSel({ kind: "cluster", id }); flyTo(id, (layout!.clusters.find((c) => c.id === id)?.radius ?? 4) * 3.0); };
   const exit = () => { setFocusCluster(null); setFly({ x: 0, y: 0, z: 0, dist: startDistance, nonce: Date.now() }); };

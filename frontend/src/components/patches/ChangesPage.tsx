@@ -1,4 +1,5 @@
 "use client";
+import { Suspense } from "react";
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ import Link from "next/link";
 import { ago } from "@/components/shell/IndexStatus";
 import { PatchDetail } from "./PatchDetail";
 
-export function ChangesPage({ repoId }: { repoId: string }) {
+function ChangesPageInner({ repoId }: { repoId: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const sel = params.get("patch");
@@ -42,4 +43,9 @@ export function ChangesPage({ repoId }: { repoId: string }) {
         )}
     </div>
   );
+}
+
+/** useSearchParams needs a Suspense boundary; it lives INSIDE the project check so the server HTML and the first client render agree. */
+export function ChangesPage({ repoId }: { repoId: string }) {
+  return <Suspense fallback={null}><ChangesPageInner repoId={repoId} /></Suspense>;
 }

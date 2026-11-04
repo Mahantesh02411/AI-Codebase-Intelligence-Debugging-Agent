@@ -22,7 +22,7 @@ export function SidebarContent({ collapsed, onNavigate }: { collapsed: boolean; 
     <div className="flex h-full flex-col">
       <div className={cn("flex h-14 shrink-0 items-center gap-2.5 px-4", collapsed && "justify-center px-0")}>
         <Logo />
-        {!collapsed && <div className="min-w-0 leading-tight"><div className="truncate text-[13px] font-semibold">Codebase Agent</div><div className="truncate text-[11px] text-muted-foreground">Code intelligence & debugging</div></div>}
+        {!collapsed && <div className="min-w-0 leading-tight"><div className="truncate text-[13px] font-semibold">CodeScout AI</div><div className="truncate text-[11px] text-muted-foreground">AI-powered code review</div></div>}
       </div>
       <div className={cn("shrink-0 px-3 pb-3", collapsed && "px-2")}><ProjectSwitcher collapsed={collapsed} /></div>
       <nav aria-label="Main" className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-3">

@@ -1,4 +1,4 @@
-# Codebase Agent: web app (v14 redesign)
+# CodeScout AI: web app (v14 redesign)
 
 Next.js 14 (App Router) · React 18 · TypeScript · Tailwind · Radix primitives · Monaco · React Flow · Recharts · Framer Motion · Zustand · TanStack Query.
 It talks to the FastAPI backend through the same API client and hooks as before; no backend contract changed.

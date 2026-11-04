@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Activity as ActivityIcon, ArrowRight, Box, CircleHelp, FlaskConical, Loader2, MessagesSquare, RefreshCw, ScanSearch, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
+import { Activity as ActivityIcon, AlertTriangle, ArrowRight, CircleCheck, Box, CircleHelp, FlaskConical, Loader2, MessagesSquare, RefreshCw, ScanSearch, Sparkles, TriangleAlert, Waypoints } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useActiveIndexing, useHealth, useStats } from "@/hooks/queries";
@@ -20,8 +20,9 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { Progress } from "@/components/ui/misc";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileLink, StatusDot, nf } from "@/components/common/bits";
+import { FileLink, SeverityBadge, StatusDot, nf } from "@/components/common/bits";
 import { Markdown } from "@/components/common/Markdown";
+import type { StaticReview } from "@/lib/types";
 import { clusterKeys, clusterColor } from "@/components/arch3d/layout3d";
 import { ago } from "@/components/shell/IndexStatus";
 
@@ -82,6 +83,45 @@ function Understanding({ repoId, ins, stats }: { repoId: string; ins?: Insights;
             <div className="space-y-3">
               {ins ? <DetectedFacts ins={ins} stats={stats} /> : <Skeleton className="h-24" />}
               <div className="flex flex-wrap items-center gap-3 rounded-lg bg-surface px-3 py-2.5"><div className="min-w-0 flex-1 text-xs text-muted-foreground">The facts above are detected from the code. Generate an AI explanation of what the project does and how the pieces fit together, with citations to the code it read. It runs the agent once and is saved for this version of the project.</div><Button onClick={() => gen.mutate(false)}><Sparkles />Generate AI project understanding</Button></div>
+            </div>
+          )}
+      </CardBody>
+    </Card>
+  );
+}
+
+/** The product's main feature, first on the page: a live strict review of the whole project (about a second, no AI model needed). */
+function ReviewCard({ repoId }: { repoId: string }) {
+  const q = useQuery({ queryKey: ["static-review", repoId], queryFn: () => api.reviewStatic(repoId), staleTime: 30_000 });
+  const r: StaticReview | undefined = q.data;
+  const status = useQuery({ queryKey: ["source-status", repoId], queryFn: () => api.sourceStatus(repoId), retry: false, staleTime: 30_000 });
+  const changed = status.data?.count ?? 0;
+  const high = r?.summary.by_severity.high ?? 0, med = r?.summary.by_severity.medium ?? 0, low = r?.summary.by_severity.low ?? 0;
+  const top = (r?.findings ?? []).filter((f) => f.severity === "high").slice(0, 4);
+  return (
+    <Card className="relative overflow-hidden border border-primary/25">
+      <div aria-hidden className="pointer-events-none absolute -left-20 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
+      <CardBody className="space-y-4">
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><ScanSearch className="size-5" /></span>
+            <div className="min-w-0"><h2 className="text-base font-semibold">Automated code review</h2>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">Every file is checked for syntax errors, typos and undefined names, wrong imports and call arguments, bugs and security problems. Real parsers and fixed rules, no guessing.</p></div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2"><Button asChild size="lg"><Link href="/review"><ScanSearch />Review code</Link></Button><Button asChild size="lg" variant="outline"><Link href="/review?tab=paste">Paste code to review</Link></Button></div>
+        </div>
+        {changed > 0 && <p className="rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">{changed} file{changed === 1 ? "" : "s"} changed in your original folder since import. Sync before reviewing to include them (Code Review page → Sync & review again).</p>}
+        {q.isLoading ? <div className="space-y-2" role="status"><Skeleton className="h-5 w-64" /><Skeleton className="h-16" /></div>
+          : q.isError ? <p className="text-xs text-destructive">The review could not run: {(q.error as Error).message}</p>
+          : r && (
+            <div className="space-y-3">
+              <div className={cn("flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg px-3 py-2.5", high + med ? "bg-destructive/8" : "bg-success/8")}>
+                {high + med ? <AlertTriangle className="size-5 text-destructive" /> : <CircleCheck className="size-5 text-success" />}
+                <div className="text-[13px] font-semibold">{high + med ? `${high + med} problem${high + med === 1 ? "" : "s"} that can crash or misbehave` : `No errors found in ${r.coverage.files_analysed} files`}</div>
+                <div className="flex gap-4 text-xs text-muted-foreground"><span><b className="text-sm tabular-nums text-destructive">{high}</b> high</span><span><b className="text-sm tabular-nums text-warning">{med}</b> medium</span><span><b className="text-sm tabular-nums text-foreground">{low}</b> low</span><span>{r.coverage.files_analysed} files · {r.duration_ms} ms</span></div>
+              </div>
+              {top.length > 0 && <ul className="space-y-1.5">{top.map((f) => <li key={f.id} className="flex items-start gap-2.5 rounded-lg bg-surface/60 px-3 py-2 text-xs"><SeverityBadge s={f.severity} /><span className="min-w-0 flex-1"><FileLink path={f.file} line={f.line} /><span className="block text-muted-foreground">{f.message}</span></span><Badge variant="outline" className="hidden font-mono sm:inline-flex">{f.rule}</Badge></li>)}</ul>}
+              {top.length > 0 && r.summary.total > top.length && <Link href="/review" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">See all {r.summary.total} findings with code and fixes <ArrowRight className="size-3.5" /></Link>}
             </div>
           )}
       </CardBody>
@@ -220,13 +260,14 @@ export function Dashboard({ repoId }: { repoId: string }) {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div className="min-w-0"><h1 className="truncate text-xl font-semibold">{s?.repo.name ?? "Project"}</h1>
             <p className="mt-0.5 text-[13px] text-muted-foreground">{s ? `${nf(s.files)} files · ${nf(s.lines)} lines · ${nf(s.symbols.functions + s.symbols.methods)} functions · ${nf(s.symbols.classes)} classes · indexed ${ago(s.indexing.indexed_at)}` : "Loading…"}</p></div>
-          <div className="flex items-center gap-2">{health.data && <Badge variant={health.data.llm_provider === "mock" ? "warning" : "success"}>{health.data.llm_provider === "mock" ? "Offline mock model" : `AI: ${health.data.llm_provider}`}</Badge>}<Button asChild size="sm"><Link href="/chat"><MessagesSquare />Ask the agent</Link></Button><Button asChild size="sm" variant="outline"><Link href="/architecture?p=system"><Waypoints />Explore in 3D</Link></Button></div>
+          <div className="flex items-center gap-2">{health.data && <Badge variant={health.data.llm_provider === "mock" ? "warning" : "success"}>{health.data.llm_provider === "mock" ? "Offline mock model" : `AI: ${health.data.llm_provider}`}</Badge>}<Button asChild size="sm"><Link href="/review"><ScanSearch />Review code</Link></Button><Button asChild size="sm" variant="outline"><Link href="/chat"><MessagesSquare />Ask the agent</Link></Button><Button asChild size="sm" variant="outline"><Link href="/architecture?p=system"><Waypoints />Explore in 3D</Link></Button></div>
         </div>
         {s && s.languages.length > 0 && <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-secondary" role="img" aria-label="Language mix">{s.languages.filter((l) => l.lines > 0).slice(0, 6).map((l, i) => <div key={l.language} title={`${l.language}: ${nf(l.lines)} lines`} style={{ width: `${(l.lines / Math.max(1, s.lines)) * 100}%`, background: `hsl(var(--chart-${(i % 6) + 1}))` }} />)}</div>}
       </Tile>
       {stats.isError ? <ErrorState title="Couldn’t load repository statistics" error={stats.error} onRetry={() => stats.refetch()} /> : (
         <>
-          <Tile i={1}><Understanding repoId={repoId} ins={ins} stats={s} /></Tile>
+          <Tile i={1}><ReviewCard repoId={repoId} /></Tile>
+          <Tile i={2}><Understanding repoId={repoId} ins={ins} stats={s} /></Tile>
           {insights.isError && <ErrorState title="Couldn’t analyse the project structure" error={insights.error} onRetry={() => insights.refetch()} />}
           <div className="grid gap-4 lg:grid-cols-5"><Tile i={2} className="lg:col-span-3"><ArchitectureGlance repoId={repoId} ins={ins} /></Tile><Tile i={3} className="lg:col-span-2"><StartHere ins={ins} /></Tile></div>
           <div className="grid gap-4 lg:grid-cols-2"><Tile i={4}><Risks repoId={repoId} ins={ins} /></Tile><Tile i={5}><AgentActivity repoId={repoId} /></Tile></div>

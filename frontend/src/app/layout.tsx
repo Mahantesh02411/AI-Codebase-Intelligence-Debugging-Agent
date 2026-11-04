@@ -4,8 +4,8 @@ import { Providers } from "./providers";
 import { THEME_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "Codebase Agent — AI code intelligence & debugging",
-  description: "Explore, review, debug and change a codebase with an AI agent you can watch working.",
+  title: "CodeScout AI: AI-Powered Automated Code Review",
+  description: "Find real bugs, typos, wrong imports and security problems in your code in seconds, then fix them with an AI agent you can watch working.",
 };
 export const viewport: Viewport = { themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0e0f13" }, { media: "(prefers-color-scheme: light)", color: "#f6f7f9" }] };
 

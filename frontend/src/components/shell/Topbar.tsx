@@ -25,7 +25,7 @@ export function Topbar() {
         <span className="hidden truncate text-muted-foreground sm:inline">{repo?.name ?? "No project"}</span>
         {repo?.branch && <Badge variant="secondary" className="hidden gap-1 sm:inline-flex"><GitBranch className="size-3" />{repo.branch}</Badge>}
         <span className="hidden text-muted-foreground/50 sm:inline">/</span>
-        <h2 className="truncate font-medium">{page?.label ?? "Codebase Agent"}</h2>
+        <h2 className="truncate font-medium">{page?.label ?? "CodeScout AI"}</h2>
       </div>
       <div className="mx-auto hidden w-full max-w-md md:block">
         <button onClick={() => setPalette(true)} className="flex h-8 w-full items-center gap-2 rounded-md border border-input bg-panel px-2.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60" aria-label="Search files, symbols and commands">

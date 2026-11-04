@@ -267,7 +267,7 @@ def flow(graph, sid: str, depth: int = 3, max_steps: int = 60, root=None) -> dic
                     visit(ts, level + 1)
             elif name not in _NOISE and unresolved < 4:
                 unresolved += 1
-                steps.append({"depth": level, "from": sym.qualname, "from_file": sym.file, "to": c, "to_file": "", "to_line": 0, "resolved": False, "verified": False, "label": f"{c}()", "id": None, "kind": "call"})
+                steps.append({"depth": level, "from": sym.qualname, "from_file": sym.file, "to": c.removeprefix("?."), "to_file": "", "to_line": 0, "resolved": False, "verified": False, "label": f"{c.removeprefix('?.')}()", "id": None, "kind": "call"})
         # React/JSX: components rendered by this function (`<Header />`) are uses of those components, in order of appearance
         if sym.language in ("javascript", "typescript", "tsx", "jsx") and root_path is not None:
             seen_tags: set[str] = set()

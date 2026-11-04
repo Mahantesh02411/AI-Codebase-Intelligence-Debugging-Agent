@@ -39,7 +39,7 @@ from .patchset import PatchError, StaleError
 from .services import RepoService
 from .utils import safe_path
 
-app = FastAPI(title="AI Codebase Intelligence & Debugging Agent", version="0.4.0")
+app = FastAPI(title="CodeScout AI: AI-Powered Automated Code Review", version="1.0.0", description="Strict static code review (syntax, typos, imports, calls, security) plus an AI agent that explains, debugs and fixes. FT-05, Neural Storm 2026.")
 app.middleware("http")(ratelimit.middleware)
 _service: RepoService | None = None
 STATIC = Path(__file__).parent / "static"
@@ -1560,6 +1560,33 @@ def review_static(repo_id: str, body: StaticReviewIn | None = None):
     res = review_project(root, only=(body.paths if body and body.paths else None))
     res["project"] = {"id": repo_id, "name": meta.get("name"), "indexed_at": meta.get("indexed_at")}
     return res
+
+
+class SnippetIn(BaseModel):
+    filename: str = "snippet.py"
+    text: str = Field(max_length=300_000)
+
+
+@app.post("/review/snippet")
+def review_snippet_endpoint(body: SnippetIn):
+    """Review code pasted into the page (no project needed). Checks that need other files (imports between project files) are skipped."""
+    from .review.engine import review_snippet
+    return review_snippet(body.filename, body.text)
+
+
+@app.post("/repositories/{repo_id}/review/export")
+def review_export(repo_id: str, fmt: str = "markdown"):
+    """The strict review as a downloadable report: markdown | sarif | json."""
+    from fastapi.responses import JSONResponse, PlainTextResponse
+    from .review.engine import review_project
+    from .review.report import to_markdown, to_sarif
+    meta, root, _ = _repo(repo_id)
+    r = review_project(root)
+    if fmt == "sarif":
+        return JSONResponse(to_sarif(r, meta.get("name", "project")))
+    if fmt == "json":
+        return JSONResponse(r)
+    return PlainTextResponse(to_markdown(r, meta.get("name", "project")), media_type="text/markdown")
 
 
 @app.get("/repositories/{repo_id}/source-status")

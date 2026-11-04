@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, CircleDashed, CircleX, ChevronDown, FlaskConical, Play, ShieldAlert, ShieldCheck, SkipForward, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -116,7 +115,6 @@ function RunView({ rec, disc }: { rec: RecordedRun; disc?: TestDiscovery }) {
 }
 
 export function TestingPage({ repoId }: { repoId: string }) {
-  const params = useSearchParams();
   const qc = useQueryClient();
   const disc = useQuery({ queryKey: ["test-discovery", repoId], queryFn: () => api.testDiscovery(repoId), retry: false });
   const runs = useQuery({ queryKey: ["test-runs", repoId], queryFn: () => api.testRuns(repoId, 20, true), retry: false });
@@ -132,7 +130,7 @@ export function TestingPage({ repoId }: { repoId: string }) {
     onError: (e: Error) => toast.error(e.message),
   });
   const auto = useRef(false);
-  useEffect(() => { if (params.get("run") === "1" && !auto.current && disc.data?.can_execute) { auto.current = true; run.mutate(undefined); } }, [params, disc.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("run") === "1" && !auto.current && disc.data?.can_execute) { auto.current = true; run.mutate(undefined); } }, [disc.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const list = runs.data ?? [];
   const current = list.find((r) => r.id === pick) ?? list[0];
   const d = disc.data;

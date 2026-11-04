@@ -1,4 +1,5 @@
 "use client";
+import { Suspense } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DiffEditor } from "@monaco-editor/react";
@@ -41,7 +42,7 @@ function ChangesView({ repoId, path }: { repoId: string; path: string }) {
   return <DiffEditor height="100%" theme={theme} language={languageOf(path)} original={v.data?.original ?? ""} modified={v.data?.modified ?? ""} options={{ readOnly: true, renderSideBySide: true, automaticLayout: true, fontSize: 13, minimap: { enabled: false }, scrollBeyondLastLine: false }} />;
 }
 
-export function ExplorerPage({ repoId }: { repoId: string }) {
+function ExplorerPageInner({ repoId }: { repoId: string }) {
   const router = useRouter();
   const params = useSearchParams();
   const file = params.get("file") ?? undefined;
@@ -114,4 +115,9 @@ export function ExplorerPage({ repoId }: { repoId: string }) {
       <Panel defaultSize={26} minSize={18} maxSize={40} className="bg-panel"><Inspector repoId={repoId} file={file} symbolAtCursor={here} onOpen={open} /></Panel>
     </PanelGroup>
   );
+}
+
+/** useSearchParams needs a Suspense boundary; it lives INSIDE the project check so the server HTML and the first client render agree. */
+export function ExplorerPage({ repoId }: { repoId: string }) {
+  return <Suspense fallback={null}><ExplorerPageInner repoId={repoId} /></Suspense>;
 }

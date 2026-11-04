@@ -1,103 +1,271 @@
-# AI Codebase Intelligence & Debugging Agent
+<div align="center">
 
-**Neural Storm 2026 · Track 1 Future Tech · FT-05 AI-Powered Automated Code Review**
-Team: _add team name_ · Members: Santosh Suresh Madannavar ([@Santosh02411](https://github.com/Santosh02411)) _(add other members)_
+# CodeScout AI
 
-## The problem
-Reviewing code and chasing bugs eats most of an engineer's week. A reviewer has to find the relevant code across hundreds of files, work out how it is reached, decide whether a change is safe, and then prove a fix works. Chat-with-your-repo tools answer questions but do not *verify* anything, and AI patches that "look right" regularly break something else or just hide the error.
+### AI-Powered Automated Code Review
 
-## The solution
-An **agentic RAG system** that treats a repository as something to investigate, not something to paste into a prompt:
+**Finds the real mistakes in your code in about a second: typos, undefined names, wrong imports, wrong function calls, broken syntax and security holes. Then an AI agent explains them, fixes them and proves each fix with your tests.**
 
-1. **Index** a repository (GitHub URL, ZIP, local folder) with code-aware parsing (Python `ast`, Tree-sitter for 8 languages) into functions, classes, routes, call graph and import graph.
-2. **Investigate** with a LangGraph team of specialists (Planner, Researcher, Debugger, Coder, Tester, Reviewer, Documenter). The model chooses among 18 tools (hybrid code search, symbol lookup, grep, callers/callees, git history, sandboxed tests...) and every claim must cite code it was actually shown.
-3. **Review** code and pull requests: deterministic checks first (security, error handling, secrets), then AI findings. Each finding has a severity, a confidence, the offending line as evidence and a concrete fix; duplicates are merged and AI findings that point at code that does not exist are marked low-confidence.
-4. **Debug and fix**: decode the error, reproduce it by running tests, find the root cause, write a multi-file patch, and **verify it in an isolated sandbox**. A fix is reported as *resolved* only when a regression test fails before the patch and passes after it. Otherwise the report says *unverified* and why.
-5. **Human approval** before anything is applied to the project or sent to GitHub.
+</div>
 
-### Why it fits FT-05 (automated code review)
-The Review mode (`/review`), the PR analysis and review workflow (Analyze PR, Review PR with inline comments anchored to real diff lines, Fix Issue) and the patch reviewer are all modes of the same agent. Findings combine static analyzers (Ruff, Bandit, Semgrep, ESLint and others) with model review grounded in retrieved code and the call graph.
+---
 
-## Architecture
-```
- repo (GitHub / ZIP / folder) ─► parse (ast + Tree-sitter) ─► chunks, call graph, import graph ─► embeddings + BM25 (pgvector or in-memory)
-                                                                                                   │
- question / error / PR ─► Planner ─► Researcher (model-chosen tools) ─► Debugger ─► Coder ─► Tester (Docker sandbox) ─► Reviewer ─► Documenter
-                             ▲            │ hybrid search → RRF → rerank → token-budgeted context with [n] citations      │ failed test
-                             └────────────┴──────────────────── reflection / research loops (bounded) ◄─────────────────────┘
- human approval ─► apply patch / open PR
-```
-Deeper dives: [docs/AGENT.md](docs/AGENT.md) (LLM layer, context building, agent graph) · [docs/RAG.md](docs/RAG.md) (retrieval pipeline, pgvector, metrics) · [docs/SANDBOX.md](docs/SANDBOX.md) (execution trust model) · [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) (architecture and decisions) · [docs/PROGRESS.md](docs/PROGRESS.md) (what is implemented, tested and validated).
+## 1. Project title and problem statement number
 
-## Core capabilities
-| Capability | Endpoint | Notes |
+| | |
+|---|---|
+| **Project title** | **CodeScout AI**: AI-Powered Automated Code Review |
+| **Event** | Neural Storm 2026 (AI/ML hackathon) |
+| **Track** | Track 1: Future Tech, Intelligent Systems & Emerging Technology |
+| **Problem statement number** | **FT-05: AI-Powered Automated Code Review** |
+
+## 2. Team name and member names
+
+| | |
+|---|---|
+| **Team name** | _(add your team name here)_ |
+| **Members** | Santosh Suresh Madannavar ([@Santosh02411](https://github.com/Santosh02411)) _(add the other members)_ |
+
+## 3. Problem description and proposed solution
+
+### The problem
+Reviewing code is slow, and the cheap mistakes (a misspelled variable, an import path with a typo, a function called with the wrong number of arguments, a missing brace) waste a reviewer's time and still reach production. Reviewers that rely on a language model are fast but can invent problems, miss real ones, and give no way to tell which is which. Developers need a reviewer they can **trust for the things a machine can be certain about**, and an assistant for the rest.
+
+### The solution
+CodeScout AI reviews a whole project in seconds with two layers:
+
+1. **Strict review (deterministic, no AI model).** Python is compiled with Python's own compiler and analysed with a scope-aware checker; JavaScript, TypeScript, JSX/TSX and five more languages are parsed with Tree-sitter grammars; JSON, YAML, TOML, HTML and CSS are validated. Every finding has a rule id, severity, exact line and column, the offending code with a caret, a **"did you mean…?"** suggestion and a how-to-fix. It reads **every file** and states what it covered and what it cannot see.
+2. **AI agent (optional).** Explains code with citations, finds root causes, writes patches, **runs your tests before and after** to mark a fix *verified* or *only suggested*, and reviews logic the static rules cannot judge. Nothing is applied to your project without your explicit approval.
+
+### What the strict review catches
+
+| Kind of mistake | Examples it finds | Rules |
 |---|---|---|
-| Ask about the code (RAG with citations) | `/chat`, `/search` | `[n]` citations and `file:line` references are validated against what was retrieved |
-| Debug an error and propose a verified fix | `/debug` | six-section report; verdict is `resolved`, `partial`, `no_regressions`, `unverified` or `not_resolved` |
-| Review code (automatic checks + AI) | `/review` | severity, confidence, evidence, remediation; deduplicated |
-| Review / analyse a pull request | GitHub panel | inline comments only on lines in the diff; nothing posted without approval |
-| Change code across files, write tests | `/change`, `/generate-tests` | tested before and after in a throw-away copy |
-| Code-quality dashboard | `/quality/run` | tests, coverage, Ruff, Pylint, mypy, Bandit, Semgrep, ESLint and more feed one score |
-| Architecture overview | `/architecture` | from extracted routes, imports and dependencies |
+| **Syntax** | missing `:`, unclosed or extra `(` `{` `[`, misspelled `retrun`, bad indentation, unterminated string, unclosed JSX expression, broken JSON/YAML/HTML | `PY-SYNTAX`, `JS-SYNTAX`, `TS/JAVA/GO/RS/C/CPP-SYNTAX`, `JSON-`/`YAML-`/`TOML-SYNTAX`, `HTML-UNCLOSED`, `BRACE` |
+| **Typos and undefined names** | `itmes` → *did you mean `items`?*, `self.nmae`, `os.pth`, `useSate`, `<Hedaer />`, Python 2 leftovers (`xrange`) | `PY-UNDEFINED`, `PY-ATTR`, `PY-MODATTR`, `JS-UNDEFINED` |
+| **Wrong imports** | a name or module that does not exist in the project, `import X from './Hedaer'`, a name the module does not export, a package missing from `package.json` (`reactt`) | `PY-IMPORT`, `JS-IMPORT`, `JS-EXPORT`, `JS-PACKAGE` |
+| **Wrong calls** | too many / missing arguments, misspelled keyword argument, method without `self` | `PY-ARITY`, `PY-NOSELF` |
+| **Bug patterns** | `x / 0`, `assert (cond, "msg")` (never fails), `'a' + 1`, mutable default argument, function defined twice, unreachable code, duplicate dict key, wrong number of `%s`, assignment in an `if`, empty `catch` | `PY-DIVZERO`, `PY-ASSERT`, `PY-TYPEMIX`, `PY-MUTDEF`, `PY-REDEF`, `PY-UNREACHABLE`, `PY-DUPKEY`, `PY-FORMAT`, `JS-ASSIGNCOND`, `JS-EMPTYCATCH` |
+| **Security** | SQL built by string concatenation, `shell=True`, `yaml.load`, `pickle`, TLS verification off, hard-coded secrets and tokens, `eval` on dynamic input | `PY-SQLI`, `PY-SHELL`, `PY-YAML`, `PY-PICKLE`, `PY-TLS`, `SECRET`, `PY-EVAL` |
+| **Dead code** | unused imports and variables | `PY-UNUSEDIMPORT`, `PY-UNUSEDVAR`, `JS-UNUSEDIMPORT` |
 
-**Reliability and safety built in:** repository text is treated as untrusted data (prompt-injection patterns are flagged and labelled, secrets are masked before reaching a prompt); symlinks are never followed when indexing or copying; patches that merely swallow exceptions or add `noqa`/`type: ignore` are rejected by deterministic checks; tool failures are reported as failures; runs have step, call and wall-clock limits; all repository code runs in a locked-down Docker container or not at all (fail-closed).
+Full catalogue and design: [docs/REVIEW_ENGINE.md](docs/REVIEW_ENGINE.md).
 
-## Technology stack
-Python 3.11+ · FastAPI · LangGraph / LangChain core · Gemini or OpenAI behind one interface (plus an offline mock) · PostgreSQL + pgvector (or in-memory) · BM25 + RRF + cross-encoder/heuristic/LLM reranking · Python `ast` + Tree-sitter · Docker sandbox · Next.js, TypeScript, Monaco editor (IDE UI) and a built-in single-page UI.
+### Impact
+Cheap mistakes are the most common reason a review round is wasted. CodeScout AI catches them before a human looks, gives each one an exact location and a suggested fix, works **fully offline** (so private code never has to leave the machine for this layer), fits CI (`--fail-on high`, SARIF export for GitHub code scanning) and teaches as it reports (every finding says why).
 
-## Quick start
-Keys and tokens (all optional; the app runs offline without them): [docs/ENV_SETUP.md](docs/ENV_SETUP.md) explains how to get each one and what happens if it is missing.
+## 4. Technology stack and libraries used
+
+| Area | Technology and libraries |
+|---|---|
+| **Review engine** | Python `compile()` and `ast` (scope analysis), **Tree-sitter** (`tree-sitter` ≥ 0.23 with grammars for Python, JavaScript, TypeScript/TSX, Java, C, C++, Go, Rust), `json`, `PyYAML`, `tomllib`, `html.parser`, `difflib` (did-you-mean) |
+| **Backend** | Python 3.11+, **FastAPI** ≥ 0.110, Uvicorn, Pydantic ≥ 2.6, python-multipart, python-dotenv, httpx, NumPy |
+| **AI agent** | **LangGraph** ≥ 0.2, langchain-core ≥ 0.3, **Gemini** (`google-genai`) or **OpenAI** (`openai`) behind one interface with an offline mock; hybrid retrieval (vectors + BM25 + reranking); optional PostgreSQL + pgvector (`psycopg`, `pgvector`) |
+| **Code intelligence** | Tree-sitter + `ast`, call / import / inheritance graphs, system graph, execution-flow extraction |
+| **Execution / safety** | Docker sandbox (no network, read-only filesystem) or local mode; `ruff` for linting; `pytest` |
+| **Frontend** | **Next.js 14**, React 18, TypeScript, Tailwind CSS, Radix UI, `@monaco-editor/react`, **React Flow** (`reactflow`), **React Three Fiber** (`three`, `@react-three/fiber`, `@react-three/drei`), Recharts, Framer Motion, TanStack Query, Zustand, `react-markdown` + `highlight.js`, Sonner, Lucide icons |
+
+Exact dependency lists: [requirements.txt](requirements.txt) and [frontend/package.json](frontend/package.json).
+
+## 5. Setup and installation instructions
+
+**Requirements:** Python 3.11 or newer. Node.js 18+ is needed only to rebuild the web interface (a built copy is included in `app/webapp`). Docker is optional (isolated test execution).
+
 ```bash
-python -m venv venv && source venv/bin/activate      # Windows: venv\Scripts\activate
+# 1. get the code
+git clone <this repository> codebase-agent
+cd codebase-agent
+
+# 2. create an environment and install the Python dependencies
+python -m venv venv
+source venv/bin/activate            # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # defaults to the offline mock LLM; set LLM_PROVIDER=gemini|openai, the API key and LLM_MODEL for real runs
-uvicorn app.main:app --reload   # UI at http://localhost:8000, API docs at /docs
+
+# 3. create your settings file (works as it is: offline mode, no API key needed)
+cp .env.example .env                # Windows: copy .env.example .env
 ```
-**Web app (redesigned):** `uvicorn app.main:app --reload` serves it at http://localhost:8000 (pre-built into `app/webapp`; after changing `frontend/`, run `scripts/build_frontend.sh`, which needs Node 18+). For frontend development with hot reload: `cd frontend && cp .env.example .env.local && npm install && npm run dev` (http://localhost:3000). It has: dashboard, AI chat with a live agent timeline, code explorer, interactive architecture graphs, debugging, review, quality, patches, testing and GitHub pages, in light and dark themes. See [frontend/README.md](frontend/README.md). The previous single-page UI is still available at `/classic`, and the multi-tab IDE layout at `/workbench`.
-Code execution needs the sandbox images: `scripts/build_sandbox.sh` (Docker required). Without Docker the agent still answers and reviews, but patches are reported as **unverified** because nothing runs. `SANDBOX_MODE=local` is for your own machine only.
-PostgreSQL + pgvector: `docker compose up db` and set `DATABASE_URL`.
+
+**Optional: turn on the AI features.** Open `.env`, set `LLM_PROVIDER=gemini` (or `openai`) and the matching key (`GEMINI_API_KEY=…`), then restart. How to get each key, and what happens if a key is missing: [docs/ENV_SETUP.md](docs/ENV_SETUP.md). The strict code review never needs a key.
+
+**Optional: rebuild the web interface** after changing `frontend/`: `scripts/build_frontend.sh` (Node 18+). For hot-reload development: `cd frontend && npm install && npm run dev`.
+
+## 6. Instructions for running the project locally
 
 ```bash
-# try it from the command line
-curl -X POST localhost:8000/repositories -H 'content-type: application/json' -d '{"source":"https://github.com/<owner>/<repo>"}'
-curl -X POST localhost:8000/debug -H 'content-type: application/json' -d '{"repo_id":"<id>","question":"500 error when creating a delivery"}'
+uvicorn app.main:app --reload       # then open http://localhost:8000
 ```
-Patch generation and root-cause analysis need a real LLM; the mock provider only does retrieval-based answers.
 
-## Configuration
-All settings are environment variables, documented in [.env.example](.env.example): `LLM_PROVIDER`, `LLM_MODEL`, `LLM_MODEL_FAST`, `EMBEDDING_PROVIDER`, `DATABASE_URL`, `SANDBOX_MODE`, `MAX_LLM_CALLS`, `MAX_AGENT_TOTAL_STEPS`, `MAX_RUN_SECONDS`, `TEST_TIMEOUT`, `GITHUB_TOKEN` and GitHub OAuth settings.
+1. Click **Add project** and choose a GitHub URL, a ZIP, or a local folder (local folders need `ALLOW_LOCAL_PATHS=true`, already set in `.env.example`).
+2. Click **Review code** (second item in the sidebar, and on the dashboard). Results appear in about a second.
+3. Open any finding to see the code with a caret under the mistake and how to fix it.
+4. Explore **Architecture** (system map, execution flow, file structure, 3D map) and **Paste code** (review code with no project).
 
-## Strict code review
-Open **Code Review**: every analysable file is checked in about a second with real parsers and fixed rules (no model): Python syntax errors, undefined names and misspellings (“did you mean”), `self.` attribute typos, wrong imports between project files, wrong call arguments, unused code, common bugs and security issues; syntax errors (missing/extra braces and brackets) in JS/TS/Java/Go/Rust/C/C++; JSON/YAML/TOML/HTML/CSS structure. The page lists exactly what was and was not analysed. **The review reads the server's copy of your project**: after you edit files in your original folder, use *Sync & review again* (or the project menu → *Sync from source & re-index*). Type checking is not included (use the Code Quality scan for mypy).
-
-## Evaluation (what has actually been measured)
-Everything below was produced by this repository's harness (`python -m app.rag.eval`). **No real-LLM or real-embedding results are included yet**; the numbers are offline baselines and must not be read as model quality.
-
-*Retrieval, offline, hashing embedder, 50 questions on this repository, symbol-level labels* ([eval/results/offline_baseline_codebase_agent.md](eval/results/offline_baseline_codebase_agent.md)): the best offline configuration (hash vectors + BM25 hybrid + heuristic rerank) reaches MRR 0.339 and Recall@5 0.420. Hashing embeddings are largely lexical, so this is a floor, not the ceiling; real embedding models are supported (`--embedders openai:...,gemini:...,bge:...`) but have not been run for this report.
-
-*Agent outcomes, offline mock LLM, 4 hand-labelled cases on the small `delivery_sync` fixture* ([eval/results/agent_offline_mock_delivery_sync.md](eval/results/agent_offline_mock_delivery_sync.md)): the expected file was in the agent's context in 4 of 4 cases. Root-cause accuracy, citation validity, patch success and regression-test effectiveness are **not measured** (n/a) because the mock model produces no analysis or patches. They are computed by the same command with a real provider:
+**Try it right now with the included demo projects** (each has deliberate mistakes listed in [examples/README.md](examples/README.md)):
 ```bash
-python -m app.rag.eval agent --repo tests/fixtures/delivery_sync --cases eval/datasets/agent_cases_delivery_sync.jsonl --provider gemini
+python -m app.review examples/python-demo --fail-on never
+python -m app.review examples/react-demo  --fail-on never
 ```
-Four cases are a smoke test, not a benchmark.
 
-## Tests
+**Your edits and the server's copy.** The app reviews its own copy of a project. After you change files in your original folder, use **Sync & review again** (or project menu → *Sync from source & re-index*). A project imported from a ZIP must be imported again.
+
+**Use it in CI or as a commit check**
 ```bash
-pytest                      # offline: no keys, no network, no Docker (the sandbox is tested with a fake docker); last full run: 480 passed, 38 skipped
+python -m app.review . --fail-on high              # exit status 1 if any high-severity finding exists
+python -m app.review . --sarif > review.sarif      # upload to GitHub code scanning
+python -m app.review . --markdown > REVIEW.md
 ```
-See [docs/PROGRESS.md](docs/PROGRESS.md) for the current test count and what each layer covers.
+The web app exports the same reports (Code Review → **Export report**: Markdown, SARIF, JSON).
 
-## Limitations
-- Real-provider quality (patch success, root-cause accuracy) is unmeasured; the prompts were exercised with scripted models.
-- Real Docker sandbox runs, real GitHub flows (PR creation, review posting) and interactive browser use of the frontend were not verified end to end.
-- Static call-graph resolution is name-based: dynamic dispatch and reflection are only resolved when the name is unique (marked "guessed by name").
-- Prompt-injection defence is layered (prompt rules, pattern flagging, human approval, sandbox) but pattern flagging cannot catch every phrasing.
-- Secrets are masked in retrieved context and tool results; the exact source shown to the coder for editing is not masked, because edits are matched literally.
-- Verification needs runnable tests. Projects without tests get `unverified` verdicts, never a claimed fix.
-- One local user: add real accounts before exposing the server on a network.
+**Tests:** `pytest` (offline: no keys, no network, no Docker needed).
 
-## AI usage disclosure
-This project was built with AI assistance: **Claude (Anthropic)** wrote and reviewed large parts of the code, tests and documentation under the author's direction. At runtime the agent calls an LLM you configure (Gemini or OpenAI) and, optionally, embedding models. Add any other tools used (ChatGPT, GitHub Copilot, Cursor...).
+## 7. Screenshots
 
-## Pushing to GitHub
-`venv/`, `.env` and `data/` are git-ignored. Never commit the virtual environment.
+Every screenshot below was taken from the running application on a real open-source project, [miguelgrinberg/microblog](https://github.com/miguelgrinberg/microblog) (a Flask app, MIT licence, 52 Python files), into which **six realistic mistakes were planted** for the demonstration: a misspelled function name, a misspelled exception name, a call with a missing argument, an import of a name that does not exist, a missing colon, and a hard-coded API token. The same files are in the [Screenshots](Screenshots/) folder.
+
+### 7.1 The review: the main feature
+
+**1. Dashboard with the Code Review card at the top.** Live summary of the review (files, high/medium/low counts, time) with the top findings and a **Review code** button.
+![Dashboard with code review card](Screenshots/01-dashboard-code-review.png)
+
+**2. Code Review: every finding, grouped by file, most serious first.** Rule id, line and column, filters, and an honest summary of what was analysed.
+![Code review findings](Screenshots/02-code-review-findings.png)
+
+**3. One finding in detail.** The offending line with a caret under the mistake, a *did you mean…?* suggestion and how to fix it.
+![A finding in detail](Screenshots/03-code-review-finding-detail.png)
+
+**4. "What was analysed".** Per language, what was checked, which files were skipped and why, and what static analysis cannot see.
+![What was analysed](Screenshots/04-code-review-what-was-analysed.png)
+
+**5. Paste code review.** Review code without a project; the example shows typical mistakes being caught.
+![Paste code review](Screenshots/05-paste-code-review.png)
+
+### 7.2 Understanding the project
+
+**6. System map.** One box per code folder, one labelled arrow per pair of folders (what is imported or called), selection highlights connections.
+![System map](Screenshots/06-system-map.png)
+
+**7. Execution flow, sequence diagram.** What a route handler calls, in source order, across files.
+![Execution flow sequence diagram](Screenshots/07-execution-flow-sequence-diagram.png)
+
+**8. Execution flow, flowchart.** The same flow as a top-to-bottom chart.
+![Execution flow flowchart](Screenshots/08-execution-flow-flowchart.png)
+
+**9. File structure.** The complete project tree annotated with entry points, tests and usage.
+![File structure](Screenshots/09-file-structure.png)
+
+**10. 3D architecture explorer.** The real parsed graph: folders, files, imports and calls; selecting a file lists exactly what it uses and what uses it (verified and inferred relationships are marked).
+![3D architecture explorer](Screenshots/10-3d-architecture-explorer.png)
+
+### 7.3 Tests, overview and themes
+
+**11. Testing.** Discovered tests are shown separately from executed results; nothing is ever shown as passed unless a test run really executed.
+![Testing](Screenshots/11-testing-discovered-tests.png)
+
+**12. Dashboard: architecture at a glance, starting questions, risks.**
+![Dashboard lower section](Screenshots/12-dashboard-architecture-and-risks.png)
+
+**13. Light theme.** A complete light palette (the interface also has a full dark theme, shown above).
+![Light theme](Screenshots/13-code-review-light-theme.png)
+
+## 8. Model accuracy and performance metrics
+
+All numbers come from this repository's own harness and can be reproduced: `python -m app.review.bench --corpus app frontend/src`. Full report: [eval/results/review_benchmark.md](eval/results/review_benchmark.md).
+
+| Measurement | Result |
+|---|---|
+| Seeded mistakes (54 hand-written cases: 38 Python, 12 JavaScript/React, 4 data/markup) | **54 of 54 found (100%)**; **53 on exactly the right line (98%)** |
+| False alarms on 6 known-good programs (classes, closures, dataclasses, hooks, JSX, constants named like secrets…) | **0** at high/medium severity |
+| Untouched third-party project (`microblog`, 52 Python files) | **0 high-severity findings**; 5 medium (genuine `os.system()` calls) |
+| Same project with 6 planted mistakes | **all 6 found** (6 high), 84 ms |
+| This project's own 130-file Python backend | **0 high**, 4 medium (all genuine `except: pass` blocks) |
+| This project's own 118-file React/TypeScript frontend | **0 high, 0 medium** |
+| Speed | about 130 files in 1.7 s; a 52-file project in under 100 ms; a small project in under 20 ms |
+| Automated tests | run `pytest` (offline; covers the review engine, benchmark, agent, API and sandbox) |
+
+**How to read these numbers.** The seeded cases were written by the authors from mistakes developers really make; they are a regression suite and a yardstick for *this* engine, **not** a comparison with other tools. No accuracy figure is claimed for the optional AI agent's patches: that needs a real model and has not been measured (`python -m app.rag.eval agent`). Building the clean-code check found and fixed real false alarms along the way, which is why it is part of the benchmark.
+
+## 9. Disclosure of AI development tools used
+
+- **Claude (Anthropic)** was used throughout development to help write and review code, tests, documentation and diagrams, under the authors' direction and review.
+- **ChatGPT, GitHub Copilot, Cursor or similar tools:** _(add here what you used, or write "none")_.
+- **At runtime**, the strict review uses **no AI model**. The optional AI features call the model you configure (Gemini or OpenAI) and are labelled as model output; with no key the app runs in an offline mode and says so wherever an AI result would appear.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+  U[Browser UI<br/>Next.js, light/dark] -->|REST + event stream| API[FastAPI backend]
+  API --> REV[Strict review engine<br/>no model]
+  API --> INTEL[Code intelligence<br/>parsers + graphs + hybrid RAG]
+  API --> AGENT[AI agent<br/>LangGraph, 7 specialists, 18 tools]
+  AGENT --> LLM[(Gemini / OpenAI<br/>optional)]
+  AGENT --> SBX[Sandbox<br/>Docker or local]
+  REV --> PY[Python compiler + scope analyser]
+  REV --> TS[Tree-sitter grammars<br/>JS/TS/JSX, Java, Go, Rust, C/C++]
+  REV --> DATA[JSON, YAML, TOML, HTML, CSS validators]
+  INTEL --> VIZ[System map, execution flow,<br/>file structure, 3D explorer]
+```
+
+```mermaid
+sequenceDiagram
+  participant D as Developer
+  participant UI as Web app
+  participant API as FastAPI
+  participant E as Review engine
+  D->>UI: Review code
+  UI->>API: POST /repositories/{id}/review/static
+  API->>E: every analysable file of the working copy
+  E->>E: compile / parse each file, resolve names, imports and calls
+  E-->>API: findings (rule, line, column, code, did-you-mean, fix) + what was and was not analysed
+  API-->>UI: JSON
+  UI-->>D: grouped by file, most serious first, caret under the mistake
+```
+
+**The AI agent's loop (optional):** *Understand → Plan → Research (hybrid search + call graph) → Analyze → Implement → Test → Review → Complete.* Every phase, tool call and timing shown in the UI comes from real events; phases that never ran are shown as "not needed". Details: [docs/AGENT.md](docs/AGENT.md), [docs/RAG.md](docs/RAG.md), [docs/SANDBOX.md](docs/SANDBOX.md).
+
+## Everything in the app
+
+| Page | What it does |
+|---|---|
+| **Dashboard** | Review card with a **Review code** button, AI project understanding (cited), architecture at a glance, starting questions built from your code, risks, agent activity |
+| **Code Review** | Whole-project review, **paste-code review**, sync banner, exports, optional AI deep review |
+| **AI Chat** | Explain / Debug / Review / Change / Test modes, `@file` references, citations that open the code, a live agent timeline |
+| **Code Explorer** | File tree, Monaco editor, outline, callers/callees, search |
+| **Architecture** | System map, execution flow, file structure, 3D map, folders, files, function calls, data models, tests-to-source, impact; "Explain this architecture" with AI |
+| **Debugging** | Paste an error: root cause, patch preview, before/after tests, *verified* vs *suggested* fix |
+| **Code Quality** | Score, 10 analyzers, coverage, trend |
+| **Changes & Patches** | Exact diffs, per-file approval, apply, revert |
+| **Testing** | Discovered vs executed tests, real output and tracebacks, recorded history |
+| **GitHub & PRs** | Analyze/review pull requests, fix issues, approvals |
+
+## Project layout
+```
+app/review/        strict review engine: pycheck.py, jscheck.py, treecheck.py, datacheck.py, engine.py, report.py, bench.py, __main__.py (CLI)
+app/agent/         AI agent: nodes, specialists, tools, context, safety checks
+app/intel/         parsers, code graphs, system graph, insights
+app/llm/           Gemini / OpenAI / mock behind one interface
+app/rag/           retrieval, embeddings, evaluation harness
+app/webapp/        the built web interface served at http://localhost:8000
+frontend/          web interface source (Next.js)
+examples/          demo projects with deliberate mistakes
+eval/              benchmark datasets and results
+docs/              design docs, environment guide, demo script
+Screenshots/       numbered screenshots used in this README
+tests/             offline test suite
+```
+
+## Limitations (stated plainly)
+- **No type checking.** Wrong argument *types* and return types are not detected (the Code Quality scan runs mypy for Python where available).
+- **Logic errors** that are syntactically and semantically valid (a wrong formula, a wrong condition) cannot be found by static rules. The optional AI review looks for them, but its findings are model output and are labelled as such.
+- **Depth varies by language.** Python is analysed deepest. JavaScript/TypeScript/React get syntax, import resolution, undefined names and pattern rules. Java, Go, Rust, C and C++ are checked for syntax errors only.
+- **Dynamic code is skipped, not guessed:** names created with `exec`/`setattr`, star imports, bundler aliases (`@/x`) and globals from `<script>` tags.
+- The AI agent's patch quality has not been benchmarked with a real model.
+- One local user; add accounts before exposing the server on a network.
+
+## Documentation
+[docs/REVIEW_ENGINE.md](docs/REVIEW_ENGINE.md) (rules and design) · [docs/DEMO.md](docs/DEMO.md) (demo script) · [docs/ENV_SETUP.md](docs/ENV_SETUP.md) (keys) · [docs/AGENT.md](docs/AGENT.md) · [docs/RAG.md](docs/RAG.md) · [docs/SANDBOX.md](docs/SANDBOX.md) · [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md) · [docs/PROGRESS.md](docs/PROGRESS.md) · [docs/FRONTEND_AUDIT.md](docs/FRONTEND_AUDIT.md) · [frontend/README.md](frontend/README.md)
+
+## License
+MIT. See [LICENSE](LICENSE).

@@ -107,6 +107,7 @@ export const api = {
   recheckPatch: (id: string) => request<PatchRecord>(`/patches/${id}/checks`, { method: "POST" }),
   repairPatch: (id: string, provider?: string) => request<ResultData>(`/patches/${id}/repair`, json("POST", { provider: provider || undefined })),
   reviewStatic: (id: string, paths?: string[]) => request<StaticReview>(`/repositories/${id}/review/static`, json("POST", { paths: paths ?? null })),
+  reviewSnippet: (filename: string, text: string) => request<StaticReview>(`/review/snippet`, json("POST", { filename, text })),
   sourceStatus: (id: string) => request<SourceStatus>(`/repositories/${id}/source-status`),
   refreshRepo: (id: string) => request<Record<string, unknown>>(`/repositories/${id}/refresh`, json("POST", {})),
   flow: (id: string, symbol: string, depth = 3) => request<FlowResult>(`/repositories/${id}/flow?${qs({ symbol, depth })}`),

@@ -88,7 +88,7 @@ export function ReviewTab({ repoId, proposalId }: { repoId: string; proposalId: 
         out[f] = p.applied ? base.text : applyEdits(base.text, mine.map((x) => x.e)).text;
       }
       if (!Object.keys(out).length) throw new Error("Approve at least one change first");
-      return api.createPr(repoId, out, p.title.slice(0, 70) || "AI change", `${p.explanation}\n\n_Generated with Codebase Agent._`);
+      return api.createPr(repoId, out, p.title.slice(0, 70) || "AI change", `${p.explanation}\n\n_Generated with CodeScout AI._`);
     },
     onSuccess: (r) => { toast.success(`Pull request #${r.number} opened`, { action: { label: "Open", onClick: () => window.open(r.url, "_blank") } }); },
     onError: (e: Error) => toast.error(e.message),

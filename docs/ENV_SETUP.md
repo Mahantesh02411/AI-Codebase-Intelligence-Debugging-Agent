@@ -18,7 +18,7 @@ Menus on Google, OpenAI, GitHub, GitLab and Atlassian sites change from time to 
 | `LLM_PROVIDER` | Which model family the agent uses | Yes (default `mock`) | `mock` = offline demo mode (see below) |
 | `GEMINI_API_KEY` | Gemini models (LLM, and Gemini embeddings) | Only if `LLM_PROVIDER=gemini` or `EMBEDDING_PROVIDER=gemini` | Requests that use Gemini fail with **“GEMINI_API_KEY is not set”** |
 | `OPENAI_API_KEY` | OpenAI models (LLM, and OpenAI embeddings) | Only if you use OpenAI | Requests fail with **“OPENAI_API_KEY is not set”** |
-| `LLM_MODEL`, `LLM_MODEL_FAST` | Choose the exact model | Optional | Built-in defaults: `gemini-2.0-flash` for Gemini, `gpt-4o-mini` for OpenAI (they may be retired by the provider: set a current model) |
+| `LLM_MODEL`, `LLM_MODEL_FAST` | Choose the exact model | Optional | Gemini: a current Flash model is chosen automatically. OpenAI: `gpt-4o-mini` (set a current model if it is retired) |
 | `GITHUB_TOKEN` | Read PRs/issues, open PRs, push (GitHub) | Optional | GitHub features answer “GitHub is not connected…”; everything else works |
 | `GITHUB_CLIENT_ID` + `GITHUB_CLIENT_SECRET` | “Sign in with GitHub” (browse and import your private repos) | Optional | The sign-in button is hidden or says “not configured”; you can still import by URL, ZIP or local folder |
 | `GITLAB_TOKEN` | Clone private GitLab repos | Optional | Public GitLab repos work; private ones fail to clone |
@@ -54,7 +54,7 @@ EMBEDDING_PROVIDER=hash
 
 - `LLM_PROVIDER` is `mock`, `gemini` or `openai`. You can also override it per run from the chat composer or Settings (the key for that provider must still be in `.env`).
 - `LLM_MODEL` is the model used for analysis, code and review. `LLM_MODEL_FAST` is an optional cheaper model for planning and tool choice; if empty, `LLM_MODEL` is used for everything.
-- If `LLM_MODEL` is empty the code uses its built-in default (`gemini-2.0-flash` / `gpt-4o-mini`). Providers retire models, so set it explicitly to one that exists today. To list the models your key can use:
+- If `LLM_MODEL` is empty, Gemini picks a current Flash model for your key automatically and remembers the one that worked (stored in `data/llm_model.json`). OpenAI falls back to its built-in default (`gpt-4o-mini`). Providers retire models, so set it explicitly to one that exists today. To list the models your key can use:
   - Gemini: `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"` and use the name without the `models/` prefix.
   - OpenAI: `curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`.
 - A wrong model name does not break startup. The first run that uses it ends with an error from the provider shown in the UI (“agent failed: …”).
@@ -171,6 +171,9 @@ How much vector search counts against keyword (BM25) search. Empty means automat
 cd frontend && cp .env.example .env.local
 ```
 `NEXT_PUBLIC_API_URL=http://localhost:8000` is where the web UI finds the backend. If the backend is elsewhere, change it and add the UI’s origin to the backend’s `CORS_ORIGINS` (comma-separated). If the backend is unreachable the UI shows a red “Backend unreachable” banner with the exact address it tried. The code editor loads Monaco from a CDN, so the first load needs internet access.
+
+## Speed and limits
+`FAST_PLANNING=true` (default) skips two planning model calls for plain Explain questions. `LLM_TIMEOUT` (default 30 s) and `LLM_MAX_RETRIES` (default 2) bound how long a slow or overloaded model can hold a run; an overloaded or out-of-quota Gemini model triggers an immediate try of the next-best model.
 
 ## Other settings you may meet in `.env`
 

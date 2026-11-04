@@ -64,7 +64,7 @@ function TopBar({ onAdd }: { onAdd: () => void }) {
   const reindex = useReindex();
   return (
     <div className="flex h-10 shrink-0 items-center gap-2 border-b bg-panel px-3">
-      <div className="flex items-center gap-1.5 font-semibold"><Sparkles className="size-4 text-primary" />Codebase Agent</div>
+      <div className="flex items-center gap-1.5 font-semibold"><Sparkles className="size-4 text-primary" />CodeScout AI</div>
       <SandboxBadge />
       <select value={repoId ?? ""} onChange={(e) => setRepoId(e.target.value || null)} className="ml-3 h-7 max-w-64 rounded-md border border-input bg-background px-2 text-xs">
         {!repos.data?.length && <option value="">No repositories</option>}

@@ -1,6 +1,6 @@
 # Progress Tracker
 
-**Current version:** v19 (React-aware review, component-level system map, faster agent runs) · **Last updated:** 2026-11-04
+**Current version:** v21 (CodeScout AI: review-first interface, paste-code review, exports, CLI, benchmark, full documentation) · **Last updated:** 2026-11-04
 
 Legend: **Implemented** = code exists · **Tested** = covered by the offline test suite (scripted LLM, local sandbox, fake docker) · **Validated** = run against a real service (real LLM, real Docker, real GitHub, browser).
 
@@ -38,6 +38,9 @@ Offline suite: 480 passed, 38 skipped, 0 failed (32 test files, run in two group
 Implemented: application shell (collapsible sidebar, topbar, project switcher, Ctrl+K command palette, notifications built from real conditions, profile/GitHub menu, live indexing status), design system, dark and light themes (persisted, no flash), and pages for dashboard, AI chat with real-event agent timeline, code explorer, interactive architecture graphs (React Flow), debugging, review, quality, patches, testing, GitHub and settings. Details: `frontend/README.md`. Served by the backend at `/` from the static export in `app/webapp` (rebuild with `scripts/build_frontend.sh`); the previous single-page UI is at `/classic` and the multi-tab IDE at `/workbench`.
 Verified: `tsc --noEmit` and `next build` pass; every route returns 200 from the production server; the API endpoints the new pages call were exercised against a running backend with the offline mock (stats, tree, symbols, symbol detail, module/call/impact graphs, patches, quality, sandbox, auth, and the `/agent/stream` event shapes).
 **Not verified:** no real browser session was available, so the UI has not been clicked through, visually inspected or tested at different screen sizes; Monaco, React Flow interaction, chart rendering, theme switching, and the layout of every page are unverified in a browser. No accessibility audit with assistive technology. No frontend unit or end-to-end tests exist yet. Chat history is session-only. Answers are not token-streamed (the backend streams events, not tokens).
+
+## v21: review first
+Code Review is the second sidebar item and has a **Review code** button and a live summary card at the top of the dashboard. Added: paste-code review, report export (Markdown, SARIF, JSON), command-line mode with exit codes for CI (`python -m app.review`), a measured benchmark (`python -m app.review.bench`: 53/53 seeded mistakes found, 0 high/medium false alarms on 247 files of working code), demo projects with deliberate mistakes (`examples/`), full README and docs (REVIEW_ENGINE.md, DEMO.md). Product renamed CodeScout AI.
 
 ## v19
 - **Review understands React/JS projects:** import paths that do not resolve, named/default imports a module does not export, packages missing from package.json (typos like `reactt`), undefined identifiers, JSX components and hooks (`useSate`, `<Hedaer />`), precise location of unclosed JSX expressions. Validated on this project's own 138-file React/TypeScript frontend: 0 high/medium findings (no false positives), 1.8 s.

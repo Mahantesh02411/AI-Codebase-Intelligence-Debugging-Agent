@@ -682,11 +682,13 @@ class Checker(ast.NodeVisitor):
             self.add("PY-MKTEMP", "security", "medium", "`tempfile.mktemp` is racy and insecure.", node, fix="Use `tempfile.mkstemp()` or `NamedTemporaryFile`.")
 
     # -- hard-coded secrets (assignments and keyword arguments only: never text in comments or docstrings) ------------------------------------------------
-    _SECRET_NAME = re.compile(r"(?i)(api[_-]?key|secret|passwd|password|private[_-]?key|access[_-]?token|auth[_-]?token|\btoken\b)")
+    _SECRET_NAME = re.compile(r"(?i)(api[_-]?key|api[_-]?token|secret|passwd|password|private[_-]?key|access[_-]?token|auth[_-]?token|(?:^|[_-])token(?:$|[_-]))")
     _FAKE = re.compile(r"(?i)^(your|<|\$\{|\{\{|%\(|changeme|change[-_ ]me|xxx|\*+$|example|placeholder|todo|dummy|test|fake|sample|secret$|password$|token$|\.\.\.|none$|null$)")
 
     def _secret(self, name: str, value: ast.AST, node: ast.AST) -> None:
-        if isinstance(value, ast.Constant) and isinstance(value.value, str) and len(value.value) >= 8 and self._SECRET_NAME.search(name) and not self._FAKE.match(value.value) and " " not in value.value.strip():
+        if isinstance(value, ast.Constant) and isinstance(value.value, str) and len(value.value) >= 8 and self._SECRET_NAME.search(name) and not self._FAKE.match(value.value) and " " not in value.value.strip() \
+                and not re.search(r"(?i)(url|uri|path|file|endpoint|header|prefix|suffix|name|type|field|env|var|dir|host|label|param|scope)$", name) \
+                and not re.match(r"(?i)^(https?|ftp|wss?)://[^@\s]*$", value.value):      # a URL without embedded credentials is not a secret
             self.add("SECRET", "security", "high", f"`{name}` looks like a hard-coded secret.", node, confidence="medium", fix="Read it from an environment variable or a secrets manager, and rotate the exposed value.")
 
     def visit_Assign(self, node: ast.Assign) -> None:

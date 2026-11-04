@@ -214,3 +214,33 @@ def _small(p: Path) -> bool:
         return p.stat().st_size <= MAX_FILE_BYTES
     except OSError:
         return False
+
+
+def review_snippet(filename: str, text: str) -> dict:
+    """Review one pasted file (no project around it, so checks that need other files, such as imports between project files, are skipped)."""
+    t0 = time.time()
+    rel = filename or "snippet.py"
+    project = Project({rel: text} if rel.endswith(".py") else {})
+    lang = _lang_of(rel)
+    findings: list[dict] = []
+    if lang is None:
+        return {"findings": [], "summary": {"total": 0, "by_severity": {"high": 0, "medium": 0, "low": 0}, "by_category": {}, "by_rule": {}},
+                "coverage": {"files_analysed": 0, "languages": [], "skipped": [{"file": rel, "reason": "no checker for this file type"}], "not_analysed_types": [Path(rel).suffix]}, "limits": LIMITS,
+                "duration_ms": 0, "engine": f"strict-static {ENGINE_VERSION}", "scope": "snippet"}
+    fs = analyse_file(rel, text, project, None)
+    lines = text.splitlines()
+    seen: set[tuple] = set()
+    counts = {"high": 0, "medium": 0, "low": 0}; cats: dict[str, int] = {}; rules: dict[str, int] = {}
+    for f in sorted(fs, key=lambda x: (SEV_ORDER.get(x.severity, 3), x.line, x.col)):
+        key = (f.rule, f.line, f.col, f.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        ln = max(1, f.line); lo, hi = max(1, ln - 2), min(len(lines), ln + 2)
+        findings.append({"id": f"{rel}:{ln}:{f.col}:{f.rule}", "rule": f.rule, "category": f.category, "severity": f.severity, "confidence": f.confidence, "file": rel, "line": ln, "col": f.col, "end_col": f.end_col or 0,
+                         "message": f.message, "fix": f.fix, "evidence": (lines[ln - 1] if 0 < ln <= len(lines) else "").rstrip()[:240], "language": lang,
+                         "context": [{"n": i, "text": lines[i - 1][:240]} for i in range(lo, hi + 1)], "source": "static-analysis"})
+        counts[f.severity] = counts.get(f.severity, 0) + 1; cats[f.category] = cats.get(f.category, 0) + 1; rules[f.rule] = rules.get(f.rule, 0) + 1
+    return {"findings": findings, "summary": {"total": len(findings), "by_severity": counts, "by_category": cats, "by_rule": rules},
+            "coverage": {"files_analysed": 1, "languages": [{"language": lang, "files": 1, "findings": len(findings), "depth": DEPTH.get(lang, "")}], "skipped": [], "not_analysed_types": []},
+            "limits": LIMITS, "duration_ms": int((time.time() - t0) * 1000), "engine": f"strict-static {ENGINE_VERSION}", "scope": "snippet"}

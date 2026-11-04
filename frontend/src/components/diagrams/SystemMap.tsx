@@ -26,7 +26,7 @@ type LaneId = (typeof LANES)[number]["id"];
 const CODE = new Set(["python", "javascript", "typescript", "tsx", "jsx", "java", "go", "rust", "c", "cpp", "html", "css", "csharp", "kotlin", "ruby", "php"]);
 const UI_LANG = new Set(["html", "css", "tsx", "jsx"]);
 const STD = /^(typing|__future__|os|sys|re|json|time|pathlib|collections|dataclasses|datetime|math|logging|abc|functools|itertools|io|copy|enum|random|string|subprocess|threading|uuid|hashlib|base64|shutil|tempfile|glob|urllib|http|socket|asyncio|contextlib|traceback|warnings|inspect|operator|heapq|bisect|textwrap|csv|sqlite3|argparse|platform|queue|struct|zipfile|statistics|decimal|secrets|fnmatch|unittest|fs|path|crypto|stream|events|util|child_process|node:.*)$/;
-const BW = 252, BH = 104, GX = 36, GY = 30, PER_ROW = 4, PAD = 20, HEAD = 34;
+const BW = 236, BH = 104, GX = 30, GY = 34, PER_ROW = 3, PAD = 20, HEAD = 34, TOP_LINKS = 14;
 
 interface Comp { id: string; label: string; lane: LaneId; files: SgFile[]; lines: number; top: string[]; x: number; y: number; kind: "comp" | "pkg" }
 interface Link { a: Comp; b: Comp; label: string; n: number; verified: boolean }
@@ -36,6 +36,7 @@ export function SystemMap({ repoId }: { repoId: string }) {
   const q = useQuery({ queryKey: ["system-graph", repoId], queryFn: () => api.graphSystem(repoId) });
   const stats = useStats(repoId);
   const [sel, setSel] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const g = q.data;
 
   const model = useMemo(() => {
@@ -114,10 +115,11 @@ export function SystemMap({ repoId }: { repoId: string }) {
       <div className="min-w-0 flex-1 overflow-auto bg-surface/30 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Info className="size-3.5 shrink-0" /><span>Each box is a folder of code. Arrows show what one folder imports or calls from another, labelled with the names that cross. Click a box for its files and connections.</span>
-          <Badge variant="outline">{model.comps.filter((c) => c.kind === "comp").length} components · {model.links.length} links</Badge>
+          <Badge variant="outline">{model.comps.filter((c) => c.kind === "comp").length} components · {sel || showAll ? model.links.length : Math.min(TOP_LINKS, model.links.length)} of {model.links.length} links shown</Badge>
+          {model.links.length > TOP_LINKS && !sel && <button onClick={() => setShowAll(!showAll)} className="text-xs font-medium text-primary hover:underline">{showAll ? "Show only the strongest links" : `Show all ${model.links.length} links`}</button>}
           {model.dropped > 0 && <Badge variant="outline" title="JSON, Markdown, YAML and other non-code files">{model.dropped} non-code files not drawn</Badge>}
         </div>
-        <svg width={model.width} height={model.height} className="max-w-none" role="img" aria-label="Architecture of the project: components and the links between them">
+        <svg viewBox={`0 0 ${model.width} ${model.height}`} width="100%" style={{ maxWidth: model.width * 1.25 }} role="img" aria-label="Architecture of the project: components and the links between them">
           <defs>
             <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-muted-foreground" /></marker>
             <marker id="arr-hi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10z" className="fill-primary" /></marker>
@@ -129,7 +131,7 @@ export function SystemMap({ repoId }: { repoId: string }) {
               <text x={PAD + 14 + l.title.length * 7.8} y={l.y + 22} className="fill-muted-foreground text-[11px]">{l.rule}</text>
             </g>
           ))}
-          {model.links.map((l, i) => {
+          {(sel || showAll ? model.links : model.links.slice(0, TOP_LINKS)).map((l, i) => {
             const hi = sel && touches(l, sel), dim = sel && !hi;
             const down = l.a.y <= l.b.y;
             const same = l.a.y === l.b.y;

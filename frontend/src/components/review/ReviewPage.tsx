@@ -1,9 +1,13 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, CircleCheck, Clipboard, FileCode2, FolderSync, Info, Loader2, Play, RefreshCw, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, ChevronDown, CircleCheck, Clipboard, Download, FileCode2, Wand2, FolderSync, Info, Loader2, Play, RefreshCw, ScanSearch, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { API_URL, api } from "@/lib/api";
+import { Dropdown, DropdownContent, DropdownItem, DropdownTrigger } from "@/components/ui/dropdown";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PasteReview } from "./PasteReview";
 import { useAgentRun } from "@/hooks/useAgentRun";
 import { currentActivity } from "@/lib/activity";
 import { useHealth, useInvalidateRepo } from "@/hooks/queries";
@@ -20,7 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FileLink, MockNotice, SeverityBadge } from "@/components/common/bits";
 import { ago } from "@/components/shell/IndexStatus";
 
-const CATS: Record<string, { label: string; hint: string }> = {
+export const CATS: Record<string, { label: string; hint: string }> = {
   syntax: { label: "Syntax errors", hint: "The file cannot be parsed: missing/extra brackets, colons, quotes, bad indentation" },
   "name-error": { label: "Names & typos", hint: "Undefined names, misspelled variables, attributes and module members" },
   "import-error": { label: "Imports", hint: "Importing a name or module that does not exist in the project" },
@@ -46,8 +50,10 @@ function Excerpt({ f }: { f: StaticFinding }) {
   );
 }
 
-function Item({ f, defaultOpen }: { f: StaticFinding; defaultOpen?: boolean }) {
+export function Item({ f, defaultOpen }: { f: StaticFinding; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(!!defaultOpen);
+  const router = useRouter();
+  const fixWithAi = () => { useIde.setState({ attachment: { file: f.file, startLine: f.line, endLine: f.line, text: f.evidence || f.message }, mode: "change" }); router.push("/chat"); };
   return (
     <li className="border-b last:border-0">
       <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/60">
@@ -61,7 +67,7 @@ function Item({ f, defaultOpen }: { f: StaticFinding; defaultOpen?: boolean }) {
         <div className="space-y-2.5 bg-surface/40 px-4 pb-4 pt-1 pl-[4.5rem]">
           <Excerpt f={f} />
           {f.fix && <div className="rounded-lg border border-success/25 bg-success/6 px-3 py-2 text-xs leading-relaxed"><span className="font-medium">How to fix: </span>{f.fix}</div>}
-          <div className="flex flex-wrap items-center gap-2"><FileLink path={f.file} line={f.line} className="border" /><span className="text-[11px] text-muted-foreground">{CATS[f.category]?.label ?? f.category} · {f.language}</span></div>
+          <div className="flex flex-wrap items-center gap-2"><FileLink path={f.file} line={f.line} className="border" /><Button size="xs" variant="outline" onClick={fixWithAi}><Wand2 />Fix with AI</Button><span className="text-[11px] text-muted-foreground">{CATS[f.category]?.label ?? f.category} · {f.language}</span></div>
         </div>
       )}
     </li>
@@ -81,6 +87,8 @@ export function ReviewPage({ repoId }: { repoId: string }) {
   const { run, stop } = useAgentRun();
   const messages = useIde((s) => s.messages);
   const runs = useIde((s) => s.runs);
+  const [tab, setTab] = useState("project");
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("tab") === "paste") setTab("paste"); }, []);   // read after mount: no hydration mismatch
   const [syncing, setSyncing] = useState(false);
   const [sev, setSev] = useState<Set<string>>(new Set(["high", "medium", "low"]));
   const [cat, setCat] = useState<string>("all");
@@ -92,6 +100,17 @@ export function ReviewPage({ repoId }: { repoId: string }) {
   const rev = useQuery({ queryKey: ["static-review", repoId], queryFn: () => api.reviewStatic(repoId), staleTime: 0, refetchOnMount: "always", refetchOnWindowFocus: false });
   const r = rev.data;
   const changed = status.data?.count ?? 0;
+
+  const download = async (fmt: "markdown" | "sarif" | "json") => {
+    try {
+      const res = await fetch(`${API_URL}/repositories/${repoId}/review/export?fmt=${fmt}`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = fmt === "markdown" ? "code-review.md" : fmt === "sarif" ? "code-review.sarif" : "code-review.json";
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+    } catch (e) { toast.error((e as Error).message); }
+  };
 
   const syncAndRun = async () => {
     setSyncing(true);
@@ -113,9 +132,13 @@ export function ReviewPage({ repoId }: { repoId: string }) {
 
   return (
     <div className="mx-auto max-w-[1100px] space-y-4 p-4 sm:p-6">
+      <Tabs value={tab} onValueChange={setTab}>
       <PageHeader title="Code Review" icon={<ScanSearch />}
         description="Every analysable file is checked with real parsers and fixed rules: syntax in all supported languages, undefined names and typos (with “did you mean”), wrong imports, wrong call arguments, bug patterns and security. No model, no sampling, no guessing."
         actions={<Button onClick={() => rev.refetch()} loading={rev.isFetching} variant="outline"><RefreshCw />Re-run review</Button>} />
+      <TabsList className="mb-4 border-b"><TabsTrigger value="project">Whole project</TabsTrigger><TabsTrigger value="paste">Paste code</TabsTrigger></TabsList>
+      <TabsContent value="paste"><PasteReview /></TabsContent>
+      <TabsContent value="project" className="space-y-4">
 
       {changed > 0 && (
         <div role="alert" className="flex flex-wrap items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3">
@@ -149,6 +172,8 @@ export function ReviewPage({ repoId }: { repoId: string }) {
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Button size="xs" variant="ghost" onClick={() => setAbout(!about)}><Info />What was analysed</Button>
                 <Button size="xs" variant="ghost" onClick={async () => { await navigator.clipboard.writeText(toMarkdown(r, r.project.name)); toast.success("Report copied as Markdown"); }}><Clipboard />Copy report</Button>
+                <Dropdown><DropdownTrigger asChild><Button size="xs" variant="ghost"><Download />Export report</Button></DropdownTrigger>
+                  <DropdownContent align="start"><DropdownItem onSelect={() => void download("markdown")}>Markdown (.md)</DropdownItem><DropdownItem onSelect={() => void download("sarif")}>SARIF (GitHub code scanning)</DropdownItem><DropdownItem onSelect={() => void download("json")}>JSON</DropdownItem></DropdownContent></Dropdown>
                 <span>Reviewed {ago(Date.now() / 1000)} · project indexed {ago(r.project.indexed_at)}</span>
               </div>
               {about && (
@@ -199,6 +224,8 @@ export function ReviewPage({ repoId }: { repoId: string }) {
           {aiRun && null}
         </CardBody>
       </Card>
+      </TabsContent>
+      </Tabs>
     </div>
   );
 }

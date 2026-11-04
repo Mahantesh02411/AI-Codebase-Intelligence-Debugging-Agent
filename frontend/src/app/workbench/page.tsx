@@ -14,7 +14,7 @@ export default function Page() {
     <>
       <Workbench />
       <Link href="/" className="fixed bottom-8 right-4 z-[70] inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground shadow-pop hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <ArrowLeft className="size-3.5" />Back to Codebase Agent
+        <ArrowLeft className="size-3.5" />Back to CodeScout AI
       </Link>
     </>
   );
